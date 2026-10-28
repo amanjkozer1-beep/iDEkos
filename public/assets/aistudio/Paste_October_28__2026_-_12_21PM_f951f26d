@@ -1,0 +1,3893 @@
+# K.O.S (Kozer Operating System) - Master Development Guide
+
+> **الهدف**: تحويل هذا المشروع إلى نظام production-ready على مستوى عالمي
+> **التقييم الحالي**: 7.5/10
+> **الهدف النهائي**: 10/10
+
+---
+
+## 📚 جدول المحتويات
+
+1. [نظرة عامة شاملة](#نظرة-عامة-شاملة)
+2. [المعمارية التفصيلية](#المعمارية-التفصيلية)
+3. [تحليل كل مكون](#تحليل-كل-مكون)
+4. [الأمان والصندوق الرملي](#الأمان-والصندوق-الرملي)
+5. [نقاط الضعف الحالية](#نقاط-الضعف-الحالية)
+6. [خطة التحسينات الشاملة](#خطة-التحسينات-الشاملة)
+7. [أمثلة الكود المقترحة](#أمثلة-الكود-المقترحة)
+8. [أفضل الممارسات](#أفضل-الممارسات)
+9. [Roadmap الكامل](#roadmap-الكامل)
+10. [Checklist النهائي](#checklist-النهائي)
+
+---
+
+## نظرة عامة شاملة
+
+### 🎯 ما هو K.O.S؟
+
+**K.O.S (Kozer Operating System)** هو سطح مكتب تطبيق ويب (Desktop Application Shell) يحاكي بيئة macOS AI agent workspace مع هوية بصرية كردية فريدة.
+
+### 📊 الإحصائيات الحالية
+
+| البند | القيمة |
+|------|--------|
+| إجمالي الملفات | 53 ملف |
+| إجمالي أسطر الكود | 12,703 سطر |
+| TypeScript Files | 38 ملف |
+| React Components | 15 مكون |
+| Adapters | 4 محولات |
+| Ports | 4 واجهات |
+| API Endpoints | 20+ endpoint |
+| Database Tables | 7 جداول |
+| Test Files | 8 ملفات اختبار |
+
+### 🏗️ التقنيات المستخدمة
+
+#### Frontend
+- **React 19.0.1** - UI Framework
+- **Zustand 5.0.16** - State Management
+- **Vite 8.3.0** - Build Tool
+- **Tailwind CSS 4.3.3** - Styling
+- **@monaco-editor/react 4.7.0** - Code Editor
+- **Motion 12.23.24** - Animations
+- **Lucide React 0.546.0** - Icons
+
+#### Backend
+- **Express 4.21.2** - Web Server
+- **node:sqlite** - Database (zero-dependency)
+- **@google/genai 2.4.0** - AI Model SDK
+- **tsx 4.21.0** - TypeScript Runtime
+
+#### Development
+- **TypeScript 7.0.2** - Type System
+- **Node Test Runner** - Built-in testing
+
+---
+
+## المعمارية التفصيلية
+
+### 📐 Hexagonal Architecture (Ports & Adapters)
+
+المشروع يتبع معمارية Ports & Adapters بدقة تامة. هذه المعمارية تفصل بين:
+- **Domain Logic** (المنطق الأساسي)
+- **Infrastructure** (البنية التحتية)
+- **Interfaces** (الواجهات)
+
+#### الرسم التخطيطي
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   React UI   │  │   Express    │  │   Zustand    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Orchestrator Layer                         │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │         AgentOrchestrator (EventEmitter)             │  │
+│  │  - Task Management                                   │  │
+│  │  - Step Execution                                    │  │
+│  │  - ReAct Loop                                        │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        ▼                   ▼                   ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│   Ports       │  │   Ports       │  │   Ports       │
+│ (Interfaces)  │  │ (Interfaces)  │  │ (Interfaces)  │
+└───────────────┘  └───────────────┘  └───────────────┘
+        │                   │                   │
+        ▼                   ▼                   ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│  Adapters    │  │  Adapters    │  │  Adapters    │
+│ (Impl)       │  │ (Impl)       │  │ (Impl)       │
+└───────────────┘  └───────────────┘  └───────────────┘
+```
+
+### 🔌 Ports (الواجهات المجردة)
+
+#### 1. WorkspaceProvider
+
+**المسار**: `src/server/ports/WorkspaceProvider.ts`
+
+**الوظيفة**: إدارة الملفات والأدلة في مساحة العمل
+
+**الواجهة**:
+```typescript
+export interface WorkspaceProvider {
+  // استعراض شجرة الملفات
+  getFileTree(dir?: string): Promise<FileNode>;
+  
+  // قراءة ملف مع دعم نطاق الأسطر
+  readFile(filePath: string, startLine?: number, endLine?: number): Promise<ReadFileResult>;
+  
+  // كتابة ملف
+  writeFile(filePath: string, content: string): Promise<void>;
+  
+  // التحقق من أمان المسار
+  isPathSafe(targetPath: string): boolean;
+  
+  // البحث في الكود
+  search(query: string, isRegex?: boolean, maxResults?: number): Promise<SearchMatch[]>;
+}
+```
+
+**لماذا Port؟**
+- يمكن استبدال التطبيق بدون تغيير Domain Logic
+- يمكن اختبار Domain Logic بـ Mocks
+- يدعم مساحات عمل مختلفة (local, remote, cloud)
+
+#### 2. ShellProvider
+
+**المسار**: `src/server/ports/ShellProvider.ts`
+
+**الوظيفة**: تنفيذ أوامر shell بطريقة آمنة
+
+**الواجهة**:
+```typescript
+export interface ShellProvider {
+  // تنفيذ أمر
+  executeCommand(rawCommand: string, options?: { timeoutMs?: number }): Promise<CommandResult>;
+  
+  // التحقق من أمان الأمر
+  validateCommand(rawCommand: string): ValidationResult;
+  
+  // إيقاف أمر قيد التشغيل
+  killCommand(pid: number): boolean;
+}
+```
+
+**لماذا Port؟**
+- يمكن دعم أنظمة تشغيل مختلفة (Linux, Windows, macOS)
+- يمكن استخدام PTY حقيقي أو محاكاة
+- يمكن دعم exec remoting (SSH, container)
+
+#### 3. StorageProvider
+
+**المسار**: `src/server/ports/StorageProvider.ts`
+
+**الوظيفة**: التخزين المستمر للبيانات
+
+**الواجهة**:
+```typescript
+export interface StorageProvider {
+  // إدارة المهام
+  getTasks(): StoredTask[];
+  getTask(id: string): StoredTask | null;
+  upsertTask(task: StoredTask): void;
+  
+  // إدارة الخطوات
+  getSteps(taskId: string): StoredStep[];
+  upsertStep(step: StoredStep): void;
+  
+  // إدارة Artifacts
+  getArtifacts(taskId: string): StoredArtifact[];
+  addArtifact(artifact: StoredArtifact): void;
+  deleteArtifact(id: string): void;
+  
+  // إدارة Logs
+  addLog(taskId: string, message: string): void;
+  getLogs(taskId: string): string[];
+  
+  // إدارة Library
+  getLibraryItems(): StoredLibraryItem[];
+  addLibraryItem(item: StoredLibraryItem): void;
+  deleteLibraryItem(id: string): void;
+  
+  // إدارة Scheduled Tasks
+  getScheduledTasks(): StoredScheduledTask[];
+  addScheduledTask(task: StoredScheduledTask): void;
+  updateScheduledTask(id: string, patch: Partial<StoredScheduledTask>): void;
+  deleteScheduledTask(id: string): void;
+  
+  // إدارة Images
+  getImages(): StoredImageItem[];
+  addImage(image: StoredImageItem): void;
+  deleteImage(id: string): void;
+  
+  // Daily Brief
+  getDailyBrief(): DailyBriefSummary;
+}
+```
+
+**لماذا Port؟**
+- يمكن استخدام قواعد بيانات مختلفة (PostgreSQL, MongoDB, Redis)
+- يمكن دعم distributed storage
+- يمكن إضافة caching layer
+
+#### 4. ModelProvider
+
+**المسار**: `src/server/ports/ModelProvider.ts`
+
+**الوظيفة**: التفاعل مع نماذج الذكاء الاصطناعي
+
+**الواجهة**:
+```typescript
+export interface ModelProvider {
+  // التحقق من وجود API Key
+  hasKey(): boolean;
+  
+  // استدعاء النموذج
+  askModel(contents: any, systemInstruction?: string, useTools?: boolean): Promise<ModelCallResult>;
+  
+  // إدارة اسم النموذج
+  getModelName(): string;
+  setModelName(modelName: string): void;
+}
+```
+
+**لماذا Port؟**
+- يمكن دعم عدة موديلات (OpenAI, Anthropic, Local LLMs)
+- يمكن إضافة retry logic موحد
+- يمكن إضافة caching للاستجابات
+
+### 🔧 Adapters (التطبيقات)
+
+#### 1. LocalWorkspaceAdapter
+
+**المسار**: `src/server/adapters/LocalWorkspaceAdapter.ts`
+
+**التنفيذ الحالي**:
+```typescript
+export class LocalWorkspaceAdapter implements WorkspaceProvider {
+  private rootPath: string;
+  
+  constructor(rootPath = (process.env.KOS_WORKSPACE_ROOT || process.cwd())) {
+    this.rootPath = path.resolve(rootPath);
+  }
+  
+  // تطبيع المسارات
+  private normalizePath(filePath: string): string {
+    const trimmed = filePath.trim();
+    if (trimmed.startsWith(this.rootPath)) {
+      return trimmed;
+    }
+    // منع الوصول للنظام
+    if (/^\/(etc|usr|var|root|bin|sys|proc|dev)(\/|$)/.test(trimmed)) {
+      return trimmed;
+    }
+    const cleaned = trimmed.replace(/^\/+/, '');
+    return path.resolve(this.rootPath, cleaned);
+  }
+  
+  // التحقق من أمان المسار
+  public isPathSafe(targetPath: string): boolean {
+    const resolved = this.normalizePath(targetPath);
+    try {
+      if (fs.existsSync(resolved)) {
+        const real = fs.realpathSync(resolved);
+        const realRoot = fs.realpathSync(this.rootPath);
+        return real.startsWith(realRoot);
+      }
+    } catch {}
+    return resolved.startsWith(this.rootPath);
+  }
+  
+  // استعراض شجرة الملفات
+  public async getFileTree(dir = this.rootPath): Promise<FileNode> {
+    const resolvedDir = this.normalizePath(dir);
+    if (!this.isPathSafe(dir)) {
+      throw new Error('Access denied: target path is outside workspace root.');
+    }
+    // ... implementation
+  }
+  
+  // قراءة ملف
+  public async readFile(filePath: string, startLine?: number, endLine?: number): Promise<ReadFileResult> {
+    if (!this.isPathSafe(filePath)) {
+      throw new Error('Access denied: path escapes workspace root.');
+    }
+    // ... implementation
+  }
+  
+  // كتابة ملف
+  public async writeFile(filePath: string, content: string): Promise<void> {
+    if (!this.isPathSafe(filePath)) {
+      throw new Error('Access denied: path escapes workspace root.');
+    }
+    // ... implementation
+  }
+  
+  // البحث
+  public async search(query: string, isRegex = false, maxResults = 50): Promise<SearchMatch[]> {
+    // ... implementation
+  }
+}
+```
+
+**النقاط القوية**:
+- ✅ Path traversal protection قوي
+- ✅ `fs.realpathSync` لمنع symlink attacks
+- ✅ Ignored directories (node_modules, .git, etc.)
+- ✅ Search مع regex support
+
+**النقاط الضعيفة**:
+- ❌ لا يوجد file watching
+- ❌ لا يوجد caching للملفات المقروءة
+- ❌ لا يوجد batch operations
+- ❌ لا يوجد diff optimization
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. إضافة Cache Layer
+private fileCache: Map<string, { content: string; timestamp: number }> = new Map();
+private CACHE_TTL = 5000; // 5 seconds
+
+public async readFile(filePath: string, startLine?: number, endLine?: number): Promise<ReadFileResult> {
+  const cacheKey = `${filePath}:${startLine}:${endLine}`;
+  const cached = this.fileCache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+    // Return cached content
+  }
+  
+  // Read file and cache
+  const result = await this.readFileInternal(filePath, startLine, endLine);
+  this.fileCache.set(cacheKey, { content: result.content, timestamp: Date.now() });
+  return result;
+}
+
+// 2. إضافة File Watching
+private watcher?: fs.FSWatcher;
+
+public watchFile(filePath: string, callback: () => void): void {
+  this.watcher = fs.watch(filePath, (eventType) => {
+    if (eventType === 'change') {
+      this.fileCache.delete(filePath);
+      callback();
+    }
+  });
+}
+
+// 3. إضافة Batch Operations
+public async batchRead(filePaths: string[]): Promise<Map<string, ReadFileResult>> {
+  const results = new Map<string, ReadFileResult>();
+  await Promise.all(
+    filePaths.map(async (path) => {
+      try {
+        const result = await this.readFile(path);
+        results.set(path, result);
+      } catch (err) {
+        // Handle errors
+      }
+    })
+  );
+  return results;
+}
+```
+
+#### 2. HardenedShellAdapter
+
+**المسار**: `src/server/adapters/HardenedShellAdapter.ts`
+
+**التنفيذ الحالي**:
+```typescript
+export class HardenedShellAdapter implements ShellProvider {
+  private rootPath: string;
+  private runningProcesses: Map<number, ChildProcess> = new Map();
+  private maxOutputBytes = 1024 * 1024; // 1MB cap
+  
+  // القائمة البيضاء للأوامر المسموحة
+  private static readonly ALLOWED_BINARIES = new Set([
+    'npm', 'node', 'npx', 'git', 'ls', 'cat', 'pwd', 'echo',
+    'grep', 'find', 'head', 'tail', 'wc', 'tsc', 'mkdir',
+    'touch', 'cp', 'mv', 'stat', 'which', 'uname', 'date',
+    'diff', 'tsx', 'tree', 'true', 'false'
+  ]);
+  
+  // المتغيرات المحظورة
+  private static readonly INTERPRETERS = new Set([
+    'node', 'npx', 'npm', 'tsx', 'python', 'python3'
+  ]);
+  
+  // تحليل arguments
+  public parseArgv(rawCommand: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+    let inQuote: '"' | "'" | null = null;
+    
+    for (let i = 0; i < rawCommand.length; i++) {
+      const char = rawCommand[i];
+      
+      if (inQuote) {
+        if (char === inQuote) {
+          inQuote = null;
+        } else {
+          current += char;
+        }
+      } else if (char === '"' || char === "'") {
+        inQuote = char;
+      } else if (/\s/.test(char)) {
+        if (current.length > 0) {
+          tokens.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current.length > 0) {
+      tokens.push(current);
+    }
+    
+    return tokens;
+  }
+  
+  // التحقق من أمان الأمر
+  public validateCommand(rawCommand: string): ValidationResult {
+    const trimmed = rawCommand.trim();
+    if (!trimmed) {
+      return { isAllowed: false, reason: 'Command is empty.' };
+    }
+    
+    // 1. حظر metacharacters
+    const forbiddenMeta = [';', '|', '&', '>', '<', '`', '\n', '\r'];
+    for (const char of forbiddenMeta) {
+      if (trimmed.includes(char)) {
+        return {
+          isAllowed: false,
+          reason: `Security rejection: Shell metacharacter '${char}' is prohibited.`
+        };
+      }
+    }
+    
+    // 2. حظر command substitution
+    if (/\$\(.*\)/.test(trimmed)) {
+      return {
+        isAllowed: false,
+        reason: 'Security rejection: Command substitution $(...) is prohibited.'
+      };
+    }
+    
+    const argv = this.parseArgv(trimmed);
+    if (argv.length === 0) {
+      return { isAllowed: false, reason: 'Empty command argv.' };
+    }
+    
+    const binary = path.basename(argv[0]).toLowerCase();
+    
+    // 3. حظر العمليات التدميرية
+    if (binary === 'rm' || argv.includes('-rf') || argv.includes('-fr')) {
+      return {
+        isAllowed: false,
+        reason: 'Command blocked: Recursive deletion is prohibited.'
+      };
+    }
+    
+    // 4. التحقق من القائمة البيضاء
+    if (!HardenedShellAdapter.ALLOWED_BINARIES.has(binary)) {
+      return {
+        isAllowed: false,
+        binary,
+        reason: `Command binary "${binary}" is not in the authorized sandbox allowlist.`
+      };
+    }
+    
+    // 5. التحقق من المسارات
+    for (let i = 1; i < argv.length; i++) {
+      const arg = argv[i];
+      if (arg.includes('/') || arg.startsWith('.')) {
+        if (arg.startsWith('/etc') || arg.startsWith('/root') || arg.startsWith('/var')) {
+          return {
+            isAllowed: false,
+            binary,
+            reason: `Path access to system directory "${arg}" is prohibited.`
+          };
+        }
+        
+        const resolved = path.resolve(this.rootPath, arg);
+        if (!resolved.startsWith(this.rootPath)) {
+          return {
+            isAllowed: false,
+            binary,
+            reason: `Path argument "${arg}" resolves outside workspace root.`
+          };
+        }
+      }
+    }
+    
+    const isInterpreter = HardenedShellAdapter.INTERPRETERS.has(binary);
+    
+    return {
+      isAllowed: true,
+      binary,
+      argv,
+      requiresApproval: isInterpreter
+    };
+  }
+  
+  // تنفيذ الأمر
+  public async executeCommand(rawCommand: string, options: { timeoutMs?: number } = {}): Promise<CommandResult> {
+    const check = this.validateCommand(rawCommand);
+    if (!check.isAllowed || !check.argv) {
+      return {
+        stdout: '',
+        stderr: `[K.O.S Sandbox Security]: ${check.reason}`,
+        exitCode: 126,
+        blocked: true,
+        reason: check.reason
+      };
+    }
+    
+    const [binary, ...args] = check.argv;
+    
+    // بيئة معزولة
+    const scrubbedEnv: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+      HOME: this.rootPath,
+      PWD: this.rootPath,
+      USER: 'kos',
+      LANG: 'en_US.UTF-8',
+      TERM: 'xterm-256color'
+    };
+    
+    // ... spawn child process with timeout and output caps
+  }
+}
+```
+
+**النقاط القوية**:
+- ✅ قائمة بيضاء صارمة (38 binary فقط)
+- ✅ حظر metacharacters
+- ✅ حظر command substitution
+- ✅ حعم path traversal
+- ✅ Environment scrubbing
+- ✅ Timeout (60s)
+- ✅ Output cap (1MB)
+- ✅ NO shell execution
+
+**النقاط الضعيفة**:
+- ❌ Environment scrubbing غير كامل (PATH قد يحتوي على info)
+- ❌ لا يوجد Rate limiting
+- ❌ لا يوجد Resource limits (CPU, Memory)
+- ❌ لا يوجد Audit logging
+- ❌ لا يوجد Process isolation (containers)
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Environment Whitelist
+private static readonly ALLOWED_ENV_VARS = new Set([
+  'PATH', 'HOME', 'PWD', 'USER', 'LANG', 'TERM', 'NODE_ENV'
+]);
+
+private scrubEnvironment(originalEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const scrubbed: NodeJS.ProcessEnv = {};
+  
+  for (const key of HardenedShellAdapter.ALLOWED_ENV_VARS) {
+    if (key === 'PATH') {
+      // Restrict PATH to safe directories only
+      scrubbed[key] = '/usr/local/bin:/usr/bin:/bin';
+    } else {
+      scrubbed[key] = originalEnv[key] || this.getDefaultEnv(key);
+    }
+  }
+  
+  return scrubbed;
+}
+
+// 2. Resource Limits
+private static readonly RESOURCE_LIMITS = {
+  maxCpu: 0.5, // 50% CPU
+  maxMemory: 512 * 1024 * 1024, // 512MB
+  maxOpenFiles: 100
+};
+
+public async executeCommand(rawCommand: string, options: { timeoutMs?: number } = {}): Promise<CommandResult> {
+  // ... validation
+  
+  const child = spawn(binary, args, {
+    cwd: this.rootPath,
+    env: this.scrubEnvironment(process.env),
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    // Resource limits (Unix only)
+    ulimit: {
+      rtprio: 50, // Lower priority
+      as: HardenedShellAdapter.RESOURCE_LIMITS.maxMemory,
+      nofile: HardenedShellAdapter.RESOURCE_LIMITS.maxOpenFiles
+    }
+  });
+  
+  // ... rest of implementation
+}
+
+// 3. Audit Logging
+private auditLog: Array<{ timestamp: string; command: string; user: string; exitCode: number }> = [];
+
+private logExecution(command: string, exitCode: number): void {
+  this.auditLog.push({
+    timestamp: new Date().toISOString(),
+    command,
+    user: process.env.USER || 'unknown',
+    exitCode
+  });
+  
+  // Write to persistent log file
+  fs.appendFileSync(
+    path.join(this.rootPath, '.kos-audit.log'),
+    JSON.stringify(this.auditLog[this.auditLog.length - 1]) + '\n'
+  );
+}
+
+// 4. Rate Limiting
+private commandRateLimiter = new Map<string, { count: number; resetTime: number }>();
+private static readonly RATE_LIMIT = {
+  maxCommands: 10,
+  windowMs: 60000 // 1 minute
+};
+
+private checkRateLimit(user: string): boolean {
+  const now = Date.now();
+  const userLimit = this.commandRateLimiter.get(user);
+  
+  if (!userLimit || now > userLimit.resetTime) {
+    this.commandRateLimiter.set(user, {
+      count: 1,
+      resetTime: now + HardenedShellAdapter.RATE_LIMIT.windowMs
+    });
+    return true;
+  }
+  
+  if (userLimit.count >= HardenedShellAdapter.RATE_LIMIT.maxCommands) {
+    return false; // Rate limited
+  }
+  
+  userLimit.count++;
+  return true;
+}
+```
+
+#### 3. SqliteStorageAdapter
+
+**المسار**: `src/server/adapters/SqliteStorageAdapter.ts`
+
+**التنفيذ الحالي**:
+```typescript
+export class SqliteStorageAdapter implements StorageProvider {
+  private db: DatabaseSync;
+  
+  constructor(dbPath?: string) {
+    const finalPath = dbPath || path.resolve(process.cwd(), 'kos-workspace.sqlite');
+    this.db = new DatabaseSync(finalPath);
+    this.initTables();
+    this.seedDefaultsIfEmpty();
+  }
+  
+  private initTables() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      
+      CREATE TABLE IF NOT EXISTS steps (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        command TEXT,
+        details TEXT,
+        diff_summary TEXT,
+        diff_text TEXT,
+        requires_approval INTEGER DEFAULT 0,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+      
+      CREATE TABLE IF NOT EXISTS artifacts (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL,
+        preview TEXT NOT NULL,
+        size TEXT,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+      
+      CREATE TABLE IF NOT EXISTS logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        message TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+      
+      CREATE TABLE IF NOT EXISTS library_items (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      
+      CREATE TABLE IF NOT EXISTS scheduled_tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        cron_schedule TEXT NOT NULL,
+        command TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        last_run TEXT,
+        last_status TEXT
+      );
+      
+      CREATE TABLE IF NOT EXISTS image_items (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        data_url TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        size_kb REAL NOT NULL
+      );
+    `);
+  }
+  
+  // CRUD operations for each table...
+}
+```
+
+**النقاط القوية**:
+- ✅ Zero-dependency (node:sqlite)
+- ✅ Foreign keys مع CASCADE delete
+- ✅ Data seeding افتراضي
+- ✅ SQLite embedded (لا يحتاج server)
+
+**النقاط الضعيفة**:
+- ❌ لا يوجد Migration system
+- ❌ لا يوجد Backup mechanism
+- ❌ لا يوجد Data retention policy
+- ❌ لا يوجد Indexing للـ queries
+- ❌ لا يوجد Connection pooling (غير ضروري لـ SQLite لكن مفيد لل scalability)
+- ❌ لا يوجد Transaction support للعمليات المعقدة
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Migration System
+interface Migration {
+  version: number;
+  name: string;
+  up: (db: DatabaseSync) => void;
+  down: (db: DatabaseSync) => void;
+}
+
+class MigrationManager {
+  private migrations: Migration[] = [];
+  
+  registerMigration(migration: Migration): void {
+    this.migrations.push(migration);
+  }
+  
+  async migrate(db: DatabaseSync, targetVersion?: number): Promise<void> {
+    const currentVersion = this.getCurrentVersion(db);
+    const target = targetVersion || this.migrations.length;
+    
+    for (const migration of this.migrations) {
+      if (migration.version > currentVersion && migration.version <= target) {
+        console.log(`Running migration: ${migration.name}`);
+        migration.up(db);
+        this.setVersion(db, migration.version);
+      }
+    }
+  }
+  
+  private getCurrentVersion(db: DatabaseSync): number {
+    // Read from schema_migrations table
+  }
+  
+  private setVersion(db: DatabaseSync, version: number): void {
+    // Update schema_migrations table
+  }
+}
+
+// 2. Backup System
+class BackupManager {
+  private dbPath: string;
+  private backupDir: string;
+  
+  constructor(dbPath: string, backupDir: string) {
+    this.dbPath = dbPath;
+    this.backupDir = backupDir;
+  }
+  
+  async createBackup(): Promise<string> {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(this.backupDir, `kos-backup-${timestamp}.sqlite`);
+    
+    // Copy database file
+    fs.copyFileSync(this.dbPath, backupPath);
+    
+    // Compress backup
+    await this.compressBackup(backupPath);
+    
+    return backupPath;
+  }
+  
+  async restoreBackup(backupPath: string): Promise<void> {
+    // Verify backup integrity
+    if (!this.verifyBackup(backupPath)) {
+      throw new Error('Backup integrity check failed');
+    }
+    
+    // Stop all database operations
+    // Replace current database with backup
+    fs.copyFileSync(backupPath, this.dbPath);
+  }
+  
+  private async compressBackup(path: string): Promise<void> {
+    // Use gzip compression
+  }
+  
+  private verifyBackup(path: string): boolean {
+    // Run PRAGMA integrity_check
+  }
+}
+
+// 3. Indexing for Performance
+private addIndexes(): void {
+  this.db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_steps_task_id ON steps(task_id);
+    CREATE INDEX IF NOT EXISTS idx_steps_status ON steps(status);
+    CREATE INDEX IF NOT EXISTS idx_artifacts_task_id ON artifacts(task_id);
+    CREATE INDEX IF NOT EXISTS idx_logs_task_id ON logs(task_id);
+    CREATE INDEX IF NOT EXISTS idx_library_items_category ON library_items(category);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_enabled ON scheduled_tasks(enabled);
+  `);
+}
+
+// 4. Transaction Support
+public async executeTransaction<T>(callback: (db: DatabaseSync) => T): Promise<T> {
+  this.db.exec('BEGIN TRANSACTION');
+  try {
+    const result = callback(this.db);
+    this.db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    this.db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+// Usage:
+storage.executeTransaction((db) => {
+  storage.upsertTask(task);
+  storage.upsertStep(step1);
+  storage.upsertStep(step2);
+  storage.addArtifact(artifact);
+});
+```
+
+#### 4. SdkModelAdapter
+
+**المسار**: `src/server/adapters/SdkModelAdapter.ts`
+
+**التنفيذ الحالي**:
+```typescript
+export class SdkModelAdapter implements ModelProvider {
+  private client: GoogleGenAI;
+  private currentModel: string;
+  private apiKey: string;
+  
+  constructor(defaultModel = process.env.MODEL_NAME || 'gemini-3.5-flash-lite') {
+    this.apiKey = process.env.MODEL_API_KEY || process.env.GEMINI_API_KEY || '';
+    this.currentModel = defaultModel;
+    this.client = new GoogleGenAI({
+      apiKey: this.apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
+  }
+  
+  public hasKey(): boolean {
+    return Boolean(
+      this.apiKey &&
+      this.apiKey !== 'MY_GEMINI_API_KEY' &&
+      this.apiKey !== 'MY_MODEL_API_KEY'
+    );
+  }
+  
+  public async askModel(
+    contents: any,
+    systemInstruction?: string,
+    useTools = true
+  ): Promise<ModelCallResult> {
+    if (!this.hasKey()) {
+      return {
+        text: '',
+        functionCalls: undefined,
+        isConfigured: false,
+        error: 'API_KEY_REQUIRED: Inference API key is not configured.'
+      };
+    }
+    
+    try {
+      const response = await this.client.models.generateContent({
+        model: this.currentModel,
+        contents,
+        config: {
+          systemInstruction: systemInstruction || 'You are the autonomous agent...',
+          tools: useTools ? AGENT_TOOLS : undefined
+        }
+      });
+      
+      return {
+        text: response.text || '',
+        functionCalls: response.functionCalls,
+        isConfigured: true
+      };
+    } catch (err: any) {
+      return {
+        text: '',
+        isConfigured: true,
+        error: err.message || 'Model inference failed'
+      };
+    }
+  }
+}
+```
+
+**النقاط القوية**:
+- ✅ Function calling support
+- ✅ Tool declarations واضحة
+- ✅ Error handling بسيط
+- ✅ Model switching
+
+**النقاط الضعيفة**:
+- ❌ لا يوجد Retry mechanism
+- ❌ لا يوجد Rate limiting
+- ❌ لا ي-existent Caching
+- ❌ لا يوجد Token counting
+- ❌ لا يexistent Context window management
+- ❌ لا يوجد Fallback models
+- ❌ لا يوجد Cost tracking
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Retry with Exponential Backoff
+interface RetryConfig {
+  maxRetries: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+}
+
+class RetryManager {
+  private config: RetryConfig = {
+    maxRetries: 3,
+    initialDelayMs: 1000,
+    maxDelayMs: 10000,
+    backoffMultiplier: 2
+  };
+  
+  async executeWithRetry<T>(
+    fn: () => Promise<T>,
+    context: string
+  ): Promise<T> {
+    let lastError: Error;
+    let delay = this.config.initialDelayMs;
+    
+    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        
+        if (attempt === this.config.maxRetries) {
+          break;
+        }
+        
+        console.warn(`Attempt ${attempt + 1} failed for ${context}, retrying in ${delay}ms...`);
+        await this.sleep(delay);
+        delay = Math.min(delay * this.config.backoffMultiplier, this.config.maxDelayMs);
+      }
+    }
+    
+    throw new Error(`Failed after ${this.config.maxRetries + 1} attempts: ${lastError.message}`);
+  }
+  
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// 2. Token Counting
+class TokenCounter {
+  // Using tiktoken or simple estimation
+  private encoding: any;
+  
+  constructor() {
+    // Initialize tiktoken encoding
+  }
+  
+  countTokens(text: string): number {
+    // Count tokens using tiktoken
+  }
+  
+  estimateCost(inputTokens: number, outputTokens: number): number {
+    // Calculate cost based on model pricing
+  }
+}
+
+// 3. Context Window Management
+class ContextManager {
+  private maxTokens: number = 128000; // For gemini-1.5-pro
+  private reservedTokens: number = 1000; // For system prompt
+  
+  truncateToTokenLimit(history: any[], currentPrompt: string): any[] {
+    const totalTokens = this.countHistoryTokens(history) + this.countTokens(currentPrompt);
+    
+    if (totalTokens <= this.maxTokens - this.reservedTokens) {
+      return history;
+    }
+    
+    // Remove oldest messages until within limit
+    const truncated = [...history];
+    while (this.countHistoryTokens(truncated) + this.countTokens(currentPrompt) > this.maxTokens - this.reservedTokens) {
+      truncated.shift();
+    }
+    
+    return truncated;
+  }
+  
+  private countHistoryTokens(history: any[]): number {
+    return history.reduce((total, msg) => {
+      const text = this.extractTextFromMessage(msg);
+      return total + this.countTokens(text);
+    }, 0);
+  }
+  
+  private extractTextFromMessage(msg: any): string {
+    // Extract text from message structure
+  }
+}
+
+// 4. Response Caching
+class ResponseCache {
+  private cache: Map<string, { response: ModelCallResult; timestamp: number }> = new Map();
+  private ttl: number = 300000; // 5 minutes
+  
+  get(key: string): ModelCallResult | null {
+    const cached = this.cache.get(key);
+    if (!cached) return null;
+    
+    if (Date.now() - cached.timestamp > this.ttl) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return cached.response;
+  }
+  
+  set(key: string, response: ModelCallResult): void {
+    this.cache.set(key, { response, timestamp: Date.now() });
+  }
+  
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+// 5. Cost Tracking
+class CostTracker {
+  private costs: Map<string, number> = new Map();
+  
+  recordCost(model: string, inputTokens: number, outputTokens: number): void {
+    const cost = this.calculateCost(model, inputTokens, outputTokens);
+    const current = this.costs.get(model) || 0;
+    this.costs.set(model, current + cost);
+  }
+  
+  getTotalCost(): number {
+    return Array.from(this.costs.values()).reduce((sum, cost) => sum + cost, 0);
+  }
+  
+  getCostByModel(): Map<string, number> {
+    return new Map(this.costs);
+  }
+  
+  private calculateCost(model: string, inputTokens: number, outputTokens: number): number {
+    // Pricing per 1M tokens
+    const pricing = {
+      'gemini-1.5-pro': { input: 1.25, output: 5.0 },
+      'gemini-1.5-flash': { input: 0.075, output: 0.30 },
+      'gemini-3.5-flash-lite': { input: 0.01, output: 0.05 }
+    };
+    
+    const modelPricing = pricing[model] || { input: 0.01, output: 0.05 };
+    return (inputTokens / 1000000) * modelPricing.input + (outputTokens / 1000000) * modelPricing.output;
+  }
+}
+
+// 6. Enhanced Model Adapter
+export class EnhancedSdkModelAdapter implements ModelProvider {
+  private client: GoogleGenAI;
+  private retryManager: RetryManager;
+  private tokenCounter: TokenCounter;
+  private contextManager: ContextManager;
+  private responseCache: ResponseCache;
+  private costTracker: CostTracker;
+  
+  constructor(defaultModel = process.env.MODEL_NAME || 'gemini-3.5-flash-lite') {
+    this.client = new GoogleGenAI({ apiKey: process.env.MODEL_API_KEY });
+    this.retryManager = new RetryManager();
+    this.tokenCounter = new TokenCounter();
+    this.contextManager = new ContextManager();
+    this.responseCache = new ResponseCache();
+    this.costTracker = new CostTracker();
+  }
+  
+  public async askModel(
+    contents: any,
+    systemInstruction?: string,
+    useTools = true
+  ): Promise<ModelCallResult> {
+    // Check cache first
+    const cacheKey = this.generateCacheKey(contents, systemInstruction, useTools);
+    const cached = this.responseCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    // Truncate context if needed
+    const truncatedContents = this.contextManager.truncateToTokenLimit(contents, systemInstruction || '');
+    
+    // Count tokens before request
+    const inputTokens = this.tokenCounter.countTokens(JSON.stringify(truncatedContents));
+    
+    // Execute with retry
+    const result = await this.retryManager.executeWithRetry(async () => {
+      const response = await this.client.models.generateContent({
+        model: this.currentModel,
+        contents: truncatedContents,
+        config: {
+          systemInstruction,
+          tools: useTools ? AGENT_TOOLS : undefined
+        }
+      });
+      
+      return {
+        text: response.text || '',
+        functionCalls: response.functionCalls,
+        isConfigured: true
+      };
+    }, 'Model API call');
+    
+    // Count output tokens
+    const outputTokens = this.tokenCounter.countTokens(result.text || '');
+    
+    // Track cost
+    this.costTracker.recordCost(this.currentModel, inputTokens, outputTokens);
+    
+    // Cache response
+    this.responseCache.set(cacheKey, result);
+    
+    return result;
+  }
+  
+  private generateCacheKey(contents: any, systemInstruction?: string, useTools?: boolean): string {
+    // Generate hash for cache key
+  }
+}
+```
+
+---
+
+## تحليل كل مكون
+
+### 🎨 Frontend Components
+
+#### 1. App.tsx
+
+**المسار**: `src/App.tsx`
+
+**الوظيفة**: المكون الرئيسي الذي يربط كل المكونات معاً
+
+**التنفيذ الحالي**:
+```typescript
+export default function App() {
+  const {
+    currentRoute,
+    sidebarCollapsed,
+    toggleSidebar,
+    setSidebarCollapsed,
+    isWindowExpanded,
+    activeTaskId,
+    tasks,
+    resetToNewChat,
+    setSearchOpen,
+    searchOpen,
+    morePopoverOpen,
+    setMorePopoverOpen,
+    accountMenuOpen,
+    setAccountMenuOpen,
+    setFolderPickerOpen,
+    setAttachMenuOpen,
+    fetchTasks,
+  } = useAppStore();
+  
+  const [sidebarWidth, setSidebarWidth] = useState(330);
+  const isDraggingSidebar = useRef(false);
+  
+  // Responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1100 && !sidebarCollapsed) {
+        setSidebarCollapsed(true);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [sidebarCollapsed, setSidebarCollapsed]);
+  
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      } else if (isCmdOrCtrl && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        resetToNewChat();
+      } else if (e.key === 'Escape') {
+        if (morePopoverOpen) setMorePopoverOpen(false);
+        if (accountMenuOpen) setAccountMenuOpen(false);
+        if (searchOpen) setSearchOpen(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, [/* dependencies */]);
+  
+  // Draggable sidebar
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingSidebar.current = true;
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingSidebar.current) return;
+      const newWidth = Math.min(Math.max(moveEvent.clientX, 280), 440);
+      setSidebarWidth(newWidth);
+    };
+    
+    const handleMouseUp = () => {
+      isDraggingSidebar.current = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+  
+  const activeTask = tasks.find((t) => t.id === activeTaskId);
+  
+  return (
+    <div className="w-screen h-screen bg-[#000000] flex items-center justify-center overflow-hidden p-0 sm:p-2 xl:p-4 select-none">
+      <div className={`relative flex w-full h-full bg-[#0B0E0C] border border-[rgba(255,255,255,0.08)] shadow-[0_30px_80px_rgba(0,0,0,0.7)] overflow-hidden transition-all duration-300 ${isWindowExpanded ? 'rounded-none max-w-none max-h-none' : 'rounded-[22px] max-w-[1920px] max-h-[1200px]'}`}>
+        <FlagStripe hairline={true} />
+        <Sidebar width={sidebarWidth} onResizeStart={handleResizeStart} />
+        <main className="relative flex-1 flex flex-col h-full bg-[#0B0E0C] overflow-hidden">
+          <Watermark />
+          <TopBar />
+          {activeTask ? (
+            <TaskExecutionView task={activeTask} onBack={() => resetToNewChat()} />
+          ) : currentRoute !== 'new-chat' ? (
+            <RouteView route={currentRoute} onBack={() => resetToNewChat()} />
+          ) : (
+            <div className="relative flex-1 flex flex-col items-center justify-center px-4 sm:px-8 z-10 w-full max-w-[1500px] mx-auto">
+              <div className="w-full text-center mb-8 sm:mb-12 select-none">
+                <h1 className="text-[#F5F4EF] font-light tracking-[-0.03em] leading-tight text-[36px] sm:text-[48px] md:text-[56px] xl:text-[64px]">
+                  You bring the idea, I'll take action
+                </h1>
+              </div>
+              <div className="w-full max-w-[1420px] flex justify-center">
+                <Composer onOpenFolderPicker={() => setFolderPickerOpen(true)} onOpenAttachMenu={() => setAttachMenuOpen(true)} />
+              </div>
+              <div className="mt-7 flex justify-center">
+                <ModeSwitch />
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+      <SearchModal />
+      <FolderPickerModal />
+      <KosStudioModal />
+    </div>
+  );
+}
+```
+
+**النقاط القوية**:
+- ✅ Responsive design
+- ✅ Keyboard shortcuts
+- ✅ Draggable sidebar
+- ✅ Clean component structure
+
+**النقاط الضعيفة**:
+- ❌ لا يوجد Error Boundary
+- ❌ لا يوجد Loading states
+- ❌ لا يوجد Suspense for code splitting
+- ❌ لا ي-existent Performance monitoring
+- ❌ Dependencies array غير optimized
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Error Boundary
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: new Error() };
+  }
+  
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App error:', error, errorInfo);
+    // Send to error tracking service
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-screen bg-[#0B0E0C]">
+          <div className="text-center">
+            <h1 className="text-2xl text-[#F5F4EF] mb-4">Something went wrong</h1>
+            <p className="text-[#8F968F] mb-4">{this.state.error.message}</p>
+            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-[#FED100] text-black rounded-lg">
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    
+    return this.props.children;
+  }
+}
+
+// Wrap App with Error Boundary
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppContent />
+    </AppErrorBoundary>
+  );
+}
+
+// 2. Optimized Dependencies
+useEffect(() => {
+  const handleResize = () => {
+    if (window.innerWidth < 1100 && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+    }
+  };
+  handleResize();
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, [sidebarCollapsed, setSidebarCollapsed]); // OK - these are stable
+
+// Better: use useCallback
+const handleResize = useCallback(() => {
+  if (window.innerWidth < 1100 && !sidebarCollapsed) {
+    setSidebarCollapsed(true);
+  }
+}, [sidebarCollapsed, setSidebarCollapsed]);
+
+useEffect(() => {
+  handleResize();
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, [handleResize]);
+
+// 3. Performance Monitoring
+class PerformanceMonitor {
+  private metrics: Map<string, number> = new Map();
+  
+  measureRender(componentName: string, fn: () => void): void {
+    const start = performance.now();
+    fn();
+    const end = performance.now();
+    const duration = end - start;
+    
+    this.metrics.set(componentName, duration);
+    
+    if (duration > 16) { // > 60fps threshold
+      console.warn(`Slow render: ${componentName} took ${duration.toFixed(2)}ms`);
+    }
+  }
+  
+  getMetrics(): Map<string, number> {
+    return this.metrics;
+  }
+}
+
+// 4. Code Splitting with Suspense
+const KosStudioModal = React.lazy(() => import('./components/KosStudioModal'));
+const SearchModal = React.lazy(() => import('./components/SearchModal'));
+
+// In render:
+<Suspense fallback={<LoadingSpinner />}>
+  <KosStudioModal />
+  <SearchModal />
+</Suspense>
+```
+
+#### 2. Sidebar.tsx
+
+**المسار**: `src/components/Sidebar.tsx`
+
+**التحليل**: المكون يعرض القائمة الجانبية مع Navigation، Projects، Account Footer
+
+**النقاط القوية**:
+- ✅ Collapsible design
+- ✅ Draggable resize
+- ✅ Glassmorphism effects
+- ✅ Keyboard navigation
+
+**النقاط الضعيفة**:
+- ❌ لا ي-existent Virtual scrolling للـ projects list
+- ❌ لا ي-existent Search في projects
+- ❌ لا ي-existent Drag & drop لترتيب projects
+- ❌ No keyboard shortcuts للـ navigation
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Virtual Scrolling for Projects
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+function VirtualProjectsList({ projects }: { projects: TaskItem[] }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  const virtualizer = useVirtualizer({
+    count: projects.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 60, // Estimated height per item
+    overscan: 5
+  });
+  
+  return (
+    <div ref={parentRef} className="h-[220px] overflow-auto">
+      <div style={{ height: `${virtualizer.getTotalSize()}px` }}>
+        {virtualizer.getVirtualItems().map((virtualItem) => (
+          <div
+            key={virtualItem.key}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${virtualItem.start}px)`
+            }}
+          >
+            <ProjectItem project={projects[virtualItem.index]} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 2. Keyboard Navigation
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!searchOpen) return;
+    
+    const filtered = tasks.filter(/* filter logic */);
+    const currentIndex = filtered.findIndex(t => t.id === activeTaskId);
+    
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = Math.min(currentIndex + 1, filtered.length - 1);
+      setActiveTaskId(filtered[nextIndex].id);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIndex = Math.max(currentIndex - 1, 0);
+      setActiveTaskId(filtered[prevIndex].id);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      // Open selected task
+    }
+  };
+  
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [searchOpen, tasks, activeTaskId, setActiveTaskId]);
+
+// 3. Drag & Drop Reordering
+import { useDrag, useDrop } from 'react-dnd';
+
+function DraggableProjectItem({ project, index, moveProject }: Props) {
+  const [{ isDragging }, drag] = useDrag({
+    type: 'PROJECT',
+    item: { id: project.id, index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging()
+    })
+  });
+  
+  const [, drop] = useDrop({
+    accept: 'PROJECT',
+    hover: (draggedItem: { index: number }) => {
+      if (draggedItem.index === index) return;
+      moveProject(draggedItem.index, index);
+    }
+  });
+  
+  return (
+    <div ref={(node) => drag(drop(node))} style={{ opacity: isDragging ? 0.5 : 1 }}>
+      {/* Project item content */}
+    </div>
+  );
+}
+```
+
+#### 3. Composer.tsx
+
+**المسار**: `src/components/Composer.tsx`
+
+**التحليل**: المكون الرئيسي لإدخال المهام والاستفسارات
+
+**النقاط القوية**:
+- ✅ Auto-resize textarea
+- ✅ Mode switch (Chat/Task)
+- ✅ Attachments menu
+- ✅ Voice input placeholder
+
+**النقاط الضعيفة**:
+- ❌ Voice input غير مُنفذ فعلياً
+- ❌ لا ي-existent Draft saving
+- ❌ لا ي-existent Character count
+- ❌ لا ي-existent Quick actions (templates)
+- ❌ لا ي-existent Multi-line input validation
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Draft Saving with LocalStorage
+useEffect(() => {
+  const savedDraft = localStorage.getItem('kos-composer-draft');
+  if (savedDraft) {
+    setComposerText(savedDraft);
+  }
+}, []);
+
+useEffect(() => {
+  if (composerText.trim()) {
+    localStorage.setItem('kos-composer-draft', composerText);
+  } else {
+    localStorage.removeItem('kos-composer-draft');
+  }
+}, [composerText]);
+
+// 2. Character/Token Count
+const tokenCount = useMemo(() => {
+  return estimateTokenCount(composerText);
+}, [composerText]);
+
+// In render:
+<div className="text-xs text-[#8F968F]">
+  {composerText.length} chars ~ {tokenCount} tokens
+</div>
+
+// 3. Quick Actions / Templates
+const templates = [
+  { label: 'Debug code', prompt: 'Debug the following code and fix any issues' },
+  { label: 'Add tests', prompt: 'Write comprehensive unit tests for' },
+  { label: 'Refactor', prompt: 'Refactor this code to improve' },
+  { label: 'Document', prompt: 'Add JSDoc comments to' }
+];
+
+// In render:
+<div className="flex gap-2 mb-2">
+  {templates.map((template) => (
+    <button
+      key={template.label}
+      onClick={() => setComposerText(template.prompt)}
+      className="px-3 py-1 bg-white/10 rounded-full text-xs text-white hover:bg-white/20"
+    >
+      {template.label}
+    </button>
+  ))}
+</div>
+
+// 4. Real Voice Input with Web Speech API
+const [isListening, setIsListening] = useState(false);
+const recognition = useRef<any>(null);
+
+useEffect(() => {
+  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    recognition.current = new SpeechRecognition();
+    recognition.current.continuous = true;
+    recognition.current.interimResults = true;
+    recognition.current.lang = 'en-US';
+    
+    recognition.current.onresult = (event: any) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      
+      if (finalTranscript) {
+        setComposerText(prev => prev + finalTranscript);
+      }
+    };
+    
+    recognition.current.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+    };
+  }
+}, []);
+
+const toggleVoiceInput = () => {
+  if (!recognition.current) {
+    alert('Speech recognition not supported in this browser');
+    return;
+  }
+  
+  if (isListening) {
+    recognition.current.stop();
+    setIsListening(false);
+  } else {
+    recognition.current.start();
+    setIsListening(true);
+  }
+};
+```
+
+#### 4. TaskExecutionView.tsx
+
+**المسار**: `src/components/TaskExecutionView.tsx`
+
+**التحليل**: عرض تنفيذ المهمة خطوة بخطوة
+
+**النقاط القوية**:
+- ✅ Step-by-step visualization
+- ✅ Approve/Deny buttons
+- ✅ Artifact display
+- ✅ Status indicators
+
+**النقاط الضعيفة**:
+- ❌ لا ي-existent Step filtering (show/hide completed)
+- ❌ لا ي-existent Step search
+- ❌ لا ي-existent Export execution log
+- ❌ لا ي-existent Replay/Debug mode
+- ❌ لا ي-existent Step time tracking
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Step Filtering
+const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed' | 'failed'>('all');
+
+const filteredSteps = useMemo(() => {
+  if (filterStatus === 'all') return task.steps;
+  return task.steps.filter(step => step.status === filterStatus);
+}, [task.steps, filterStatus]);
+
+// 2. Time Tracking
+const stepDurations = useMemo(() => {
+  const durations: Map<string, number> = new Map();
+  
+  for (let i = 0; i < task.steps.length; i++) {
+    const step = task.steps[i];
+    const nextStep = task.steps[i + 1];
+    
+    if (step.status === 'completed' && nextStep) {
+      const start = new Date(step.timestamp).getTime();
+      const end = new Date(nextStep.timestamp).getTime();
+      durations.set(step.id, end - start);
+    }
+  }
+  
+  return durations;
+}, [task.steps]);
+
+// 3. Export Execution Log
+const exportExecutionLog = () => {
+  const log = {
+    taskId: task.id,
+    title: task.title,
+    prompt: task.prompt,
+    startedAt: task.createdAt,
+    steps: task.steps.map(step => ({
+      title: step.title,
+      status: step.status,
+      timestamp: step.timestamp,
+      command: step.command,
+      details: step.details,
+      duration: stepDurations.get(step.id)
+    })),
+    artifacts: task.artifacts
+  };
+  
+  const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `execution-log-${task.id}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// 4. Step Search
+const [stepSearch, setStepSearch] = useState('');
+
+const searchFilteredSteps = useMemo(() => {
+  if (!stepSearch) return task.steps;
+  const query = stepSearch.toLowerCase();
+  return task.steps.filter(step =>
+    step.title.toLowerCase().includes(query) ||
+    step.details?.toLowerCase().includes(query) ||
+    step.command?.toLowerCase().includes(query)
+  );
+}, [task.steps, stepSearch]);
+```
+
+#### 5. KosStudioModal.tsx
+
+**المسار**: `src/components/KosStudioModal.tsx`
+
+**التحليل**: محرر كود متكامل مع Monaco Editor
+
+**النقاط القوية**:
+- ✅ Monaco Editor مع syntax highlighting
+- ✅ File tree explorer
+- ✅ Interactive terminal
+- ✅ Multi-tab support
+- ✅ Diagnostics check
+
+**النقاط الضعيفة**:
+- ❌ لا ي-existent Git integration
+- ❌ لا ي-existent File search/replace
+- ❌ لا ي-existent Split view
+- ❌ لا ي-existent Code formatting
+- ❌ لا ي-existent IntelliSense enhancements
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Git Integration
+const gitStatus = useGitStatus();
+
+interface GitStatus {
+  modified: string[];
+  added: string[];
+  deleted: string[];
+  untracked: string[];
+}
+
+function useGitStatus(): GitStatus {
+  const [status, setStatus] = useState<GitStatus>({ modified: [], added: [], deleted: [], untracked: [] });
+  
+  useEffect(() => {
+    fetch('/api/git/status')
+      .then(res => res.json())
+      .then(setStatus);
+  }, []);
+  
+  return status;
+}
+
+// In file tree:
+{gitStatus.modified.includes(node.path) && (
+  <span className="text-yellow-500">M</span>
+)}
+{gitStatus.added.includes(node.path) && (
+  <span className="text-green-500">A</span>
+)}
+
+// 2. File Search/Replace
+const [searchQuery, setSearchQuery] = useState('');
+const [replaceQuery, setReplaceQuery] = useState('');
+const [searchResults, setSearchResults] = useState<SearchMatch[]>([]);
+
+const handleSearch = async () => {
+  const results = await fetch('/api/workspace/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: searchQuery })
+  }).then(res => res.json());
+  setSearchResults(results);
+};
+
+const handleReplaceAll = async () => {
+  await fetch('/api/workspace/replace', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ search: searchQuery, replace: replaceQuery })
+  });
+};
+
+// 3. Split View
+const [splitView, setSplitView] = useState(false);
+const [secondaryFile, setSecondaryFile] = useState<string | null>(null);
+
+// In render:
+{splitView && (
+  <div className="flex-1 border-l border-white/10">
+    <Editor
+      height="100%"
+      path={secondaryFile}
+      language={getLanguageFromPath(secondaryFile)}
+      value={selectedFileContent}
+      theme="vs-dark"
+    />
+  </div>
+)}
+
+// 4. Code Formatting
+const formatCode = async () => {
+  await fetch('/api/workspace/format', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: selectedStudioFile })
+  });
+};
+
+// 5. Enhanced IntelliSense
+// Monaco supports custom language features
+const editorRef = useRef<any>(null);
+
+useEffect(() => {
+  if (editorRef.current) {
+    monaco.languages.registerCompletionItemProvider('typescript', {
+      provideCompletionItems: (model, position) => {
+        // Custom completion items based on project structure
+        return {
+          suggestions: [
+            {
+              label: 'kos.log',
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: 'kos.log(${1:message})',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            }
+          ]
+        };
+      }
+    });
+  }
+}, []);
+```
+
+---
+
+## الأمان والصندوق الرملي
+
+### 🔒 طبقات الحماية الحالية
+
+#### الطبقة 1: Command Validation
+
+**المسار**: `src/server/adapters/HardenedShellAdapter.ts`
+
+**التحقق الحالي**:
+```typescript
+public validateCommand(rawCommand: string): ValidationResult {
+  // 1. حظر metacharacters
+  const forbiddenMeta = [';', '|', '&', '>', '<', '`', '\n', '\r'];
+  
+  // 2. حظر command substitution
+  if (/\$\(.*\)/.test(trimmed)) { /* reject */ }
+  
+  // 3. حظر rm -rf
+  if (binary === 'rm' || argv.includes('-rf')) { /* reject */ }
+  
+  // 4. القائمة البيضاء
+  if (!ALLOWED_BINARIES.has(binary)) { /* reject */ }
+  
+  // 5. Path traversal check
+  if (arg.startsWith('/etc') || arg.startsWith('/root')) { /* reject */ }
+}
+```
+
+**المشاكل**:
+- ❌ لا ي-existent Protection ضد symlink attacks
+- ❌ لا ي-existent Protection ضد race conditions (TOCTOU)
+- ❌ لا ي-existent Protection ضد environment variable injection
+- ❌ لا ي-existent Protection ضد argument overflow
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Symlink Protection
+public isPathSafe(targetPath: string): boolean {
+  const resolved = this.normalizePath(targetPath);
+  
+  try {
+    // Use lstat to detect symlinks
+    const lstat = fs.lstatSync(resolved);
+    if (lstat.isSymbolicLink()) {
+      const realTarget = fs.realpathSync(resolved);
+      return realTarget.startsWith(this.rootPath);
+    }
+    
+    // Regular file check
+    const real = fs.realpathSync(resolved);
+    const realRoot = fs.realpathSync(this.rootPath);
+    return real.startsWith(realRoot);
+  } catch {
+    return false;
+  }
+}
+
+// 2. TOCTOU Protection
+public async readFileSafe(filePath: string): Promise<string> {
+  const resolved = this.normalizePath(filePath);
+  
+  // Single check-then-use pattern
+  const handle = await fs.promises.open(resolved, 'r');
+  try {
+    const stat = await handle.stat();
+    
+    // Verify it's still the same file (no race condition)
+    if (!stat.isFile() || !this.isPathSafe(resolved)) {
+      throw new Error('File access denied');
+    }
+    
+    const buffer = await handle.readFile();
+    return buffer.toString('utf-8');
+  } finally {
+    await handle.close();
+  }
+}
+
+// 3. Argument Length Limits
+private static readonly MAX_ARG_LENGTH = 4096;
+private static readonly MAX_ARGS = 100;
+
+public validateCommand(rawCommand: string): ValidationResult {
+  const argv = this.parseArgv(rawCommand);
+  
+  if (argv.length > HardenedShellAdapter.MAX_ARGS) {
+    return {
+      isAllowed: false,
+      reason: `Too many arguments (max ${HardenedShellAdapter.MAX_ARGS})`
+    };
+  }
+  
+  for (const arg of argv) {
+    if (arg.length > HardenedShellAdapter.MAX_ARG_LENGTH) {
+      return {
+        isAllowed: false,
+        reason: `Argument too long (max ${HardenedShellAdapter.MAX_ARG_LENGTH} chars)`
+      };
+    }
+  }
+  
+  // ... rest of validation
+}
+
+// 4. Environment Variable Injection Protection
+private sanitizeEnvVar(value: string): string {
+  // Remove shell metacharacters
+  return value.replace(/[;&|`$()]/g, '');
+}
+
+private scrubEnvironment(originalEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const scrubbed: NodeJS.ProcessEnv = {};
+  
+  for (const key of HardenedShellAdapter.ALLOWED_ENV_VARS) {
+    const value = originalEnv[key];
+    if (value) {
+      scrubbed[key] = this.sanitizeEnvVar(value);
+    }
+  }
+  
+  return scrubbed;
+}
+```
+
+#### الطبقة 2: Path Traversal Protection
+
+**المسار**: `src/server/adapters/LocalWorkspaceAdapter.ts`
+
+**التحقق الحالي**:
+```typescript
+public isPathSafe(targetPath: string): boolean {
+  const resolved = this.normalizePath(targetPath);
+  
+  try {
+    if (fs.existsSync(resolved)) {
+      const real = fs.realpathSync(resolved);
+      const realRoot = fs.realpathSync(this.rootPath);
+      return real.startsWith(realRoot);
+    }
+  } catch {}
+  
+  return resolved.startsWith(this.rootPath);
+}
+```
+
+**المشاكل**:
+- ❌ لا ي-existent Unicode normalization attacks
+- ❌ لا ي-existent Path encoding attacks
+- ❌ لا ي-existent Case sensitivity issues (Windows)
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. Unicode Normalization
+import { normalize } from 'normalize-path';
+
+public normalizePath(filePath: string): string {
+  const trimmed = filePath.trim();
+  
+  // Normalize Unicode (NFC)
+  const normalized = normalize(trimmed, 'NFC');
+  
+  // ... rest of normalization
+}
+
+// 2. Path Encoding Protection
+public isPathSafe(targetPath: string): boolean {
+  try {
+    // Decode URL-encoded paths
+    const decoded = decodeURIComponent(targetPath);
+    const resolved = this.normalizePath(decoded);
+    
+    // Check for null bytes
+    if (resolved.includes('\0')) {
+      return false;
+    }
+    
+    // ... rest of checks
+  } catch {
+    return false;
+  }
+}
+
+// 3. Cross-Platform Path Handling
+import path from 'path';
+
+public isPathSafe(targetPath: string): boolean {
+  const resolved = this.normalizePath(targetPath);
+  
+  try {
+    const real = fs.realpathSync(resolved);
+    const realRoot = fs.realpathSync(this.rootPath);
+    
+    // Use path.relative for cross-platform comparison
+    const relative = path.relative(realRoot, real);
+    
+    // Check if relative path starts with '..'
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+}
+```
+
+#### الطبقة 3: Environment Scrubbing
+
+**المسار**: `src/server/adapters/HardenedShellAdapter.ts`
+
+**التحقق الحالي**:
+```typescript
+const scrubbedEnv: NodeJS.ProcessEnv = {
+  PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+  HOME: this.rootPath,
+  PWD: this.rootPath,
+  USER: 'kos',
+  LANG: 'en_US.UTF-8',
+  TERM: 'xterm-256color'
+};
+```
+
+**المشاكل**:
+- ❌ PATH قد يحتوي على paths غير آمنة
+- ❌ لا ي-existent Whitelist للـ variables
+- ❌ لا ي-existent Sanitization للقيم
+
+**التحسينات المطلوبة**:
+```typescript
+// 1. PATH Whitelist
+private static readonly SAFE_PATHS = [
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin',
+  '/usr/local/sbin',
+  '/usr/sbin',
+  '/sbin'
+];
+
+private sanitizePath(originalPath: string): string {
+  const paths = originalPath.split(':');
+  const safePaths = paths.filter(p => 
+    HardenedShellAdapter.SAFE_PATHS.includes(p) ||
+    p.startsWith(this.rootPath)
+  );
+  return safePaths.join(':');
+}
+
+// 2. Environment Variable Whitelist
+private static readonly ALLOWED_ENV_VARS = new Set([
+  'PATH',
+  'HOME',
+  'PWD',
+  'USER',
+  'LANG',
+  'TERM',
+  'NODE_ENV',
+  'TZ'
+]);
+
+private scrubEnvironment(originalEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const scrubbed: NodeJS.ProcessEnv = {};
+  
+  for (const key of HardenedShellAdapter.ALLOWED_ENV_VARS) {
+    if (key === 'PATH') {
+      scrubbed[key] = this.sanitizePath(originalEnv[key] || '');
+    } else if (key === 'NODE_ENV') {
+      scrubbed[key] = 'production'; // Force production
+    } else {
+      scrubbed[key] = originalEnv[key] || this.getDefaultEnv(key);
+    }
+  }
+  
+  return scrubbed;
+}
+
+private getDefaultEnv(key: string): string {
+  const defaults: Record<string, string> = {
+    HOME: this.rootPath,
+    PWD: this.rootPath,
+    USER: 'kos',
+    LANG: 'en_US.UTF-8',
+    TERM: 'xterm-256color',
+    TZ: 'UTC'
+  };
+  return defaults[key] || '';
+}
+
+// 3. Value Sanitization
+private sanitizeEnvValue(value: string): string {
+  // Remove shell metacharacters
+  let sanitized = value.replace(/[;&|`$()]/g, '');
+  
+  // Remove null bytes
+  sanitized = sanitized.replace(/\0/g, '');
+  
+  // Limit length
+  const MAX_ENV_VALUE_LENGTH = 4096;
+  if (sanitized.length > MAX_ENV_VALUE_LENGTH) {
+    sanitized = sanitized.substring(0, MAX_ENV_VALUE_LENGTH);
+  }
+  
+  return sanitized;
+}
+```
+
+---
+
+## نقاط الضعف الحالية
+
+### 🚨 النقاط الحرجة (Critical)
+
+#### 1. لا ي-existent Context Window Management
+
+**المشكلة**: Agent قد يستهلك كل tokens بدون limit
+
+**التأثير**:
+- 💰 تكلفة عالية (API calls مكلفة)
+- ⏱️ استجابة بطيئة
+- 🚫 Context overflow errors
+
+**الحل**:
+```typescript
+class ContextManager {
+  private maxTokens: number;
+  private reservedTokens: number;
+  
+  constructor(maxTokens: number = 128000, reservedTokens: number = 1000) {
+    this.maxTokens = maxTokens;
+    this.reservedTokens = reservedTokens;
+  }
+  
+  truncateHistory(history: any[], currentPrompt: string): any[] {
+    const historyTokens = this.countTokens(history);
+    const promptTokens = this.countTokens(currentPrompt);
+    const totalTokens = historyTokens + promptTokens;
+    
+    if (totalTokens <= this.maxTokens - this.reservedTokens) {
+      return history;
+    }
+    
+    // Remove oldest messages
+    const truncated = [...history];
+    while (this.countTokens(truncated) + promptTokens > this.maxTokens - this.reservedTokens) {
+      truncated.shift();
+    }
+    
+    return truncated;
+  }
+  
+  countTokens(text: string): number {
+    // Use tiktoken or estimation
+    return Math.ceil(text.length / 4); // Rough estimate
+  }
+  
+  countHistory(history: any[]): number {
+    return history.reduce((total, msg) => {
+      const text = this.extractText(msg);
+      return total + this.countTokens(text);
+    }, 0);
+  }
+  
+  private extractText(msg: any): string {
+    if (typeof msg === 'string') return msg;
+    if (msg.text) return msg.text;
+    if (msg.parts) {
+      return msg.parts.map((p: any) => p.text || '').join('');
+    }
+    return '';
+  }
+}
+```
+
+#### 2. لا ي-existent Self-Correction Mechanism
+
+**المشكلة**: إذا فشل خطوة، Agent يتوقف ولا يحاول مرة أخرى
+
+**التأثير**:
+- ❌ Tasks تفشل بسهولة
+- ❌ لا يexistent Learning من الأخطاء
+- ❌ تجربة مستخدم سيئة
+
+**الحل**:
+```typescript
+class SelfCorrectionEngine {
+  private maxRetries: number = 3;
+  private retryStrategies: Map<string, RetryStrategy> = new Map();
+  
+  constructor() {
+    this.initializeStrategies();
+  }
+  
+  private initializeStrategies(): void {
+    // Strategy for file read failures
+    this.retryStrategies.set('read_file_failed', {
+      attempt: async (context) => {
+        // Try alternative path
+        const altPath = this.findAlternativePath(context.args.path);
+        return await context.workspace.readFile(altPath);
+      },
+      shouldRetry: (error) => error.message.includes('not found')
+    });
+    
+    // Strategy for command failures
+    this.retryStrategies.set('command_failed', {
+      attempt: async (context) => {
+        // Try with different flags
+        const altCommand = this.modifyCommand(context.args.command);
+        return await context.shell.executeCommand(altCommand);
+      },
+      shouldRetry: (error) => error.exitCode !== 0
+    });
+    
+    // Strategy for patch failures
+    this.retryStrategies.set('patch_failed', {
+      attempt: async (context) => {
+        // Try fuzzy matching
+        const result = this.applyFuzzyPatch(context);
+        return result;
+      },
+      shouldRetry: (error) => error.message.includes('not found')
+    });
+  }
+  
+  async executeWithSelfCorrection(
+    toolName: string,
+    args: any,
+    context: any
+  ): Promise<any> {
+    let lastError: Error;
+    
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const result = await this.executeTool(toolName, args, context);
+        return result;
+      } catch (error) {
+        lastError = error;
+        
+        const strategy = this.retryStrategies.get(`${toolName}_failed`);
+        if (strategy && strategy.shouldRetry(error)) {
+          console.log(`Attempt ${attempt + 1} failed, trying self-correction...`);
+          continue;
+        }
+        
+        break;
+      }
+    }
+    
+    throw lastError;
+  }
+  
+  private async executeTool(toolName: string, args: any, context: any): Promise<any> {
+    switch (toolName) {
+      case 'read_file':
+        return await context.workspace.readFile(args.path, args.start_line, args.end_line);
+      case 'list_dir':
+        return await context.workspace.getFileTree(args.path);
+      case 'write_patch':
+        return await this.applyPatch(args, context);
+      case 'run_terminal':
+        return await context.shell.executeCommand(args.command);
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
+    }
+  }
+  
+  private findAlternativePath(originalPath: string): string {
+    // Try similar filenames
+    const dir = path.dirname(originalPath);
+    const name = path.basename(originalPath);
+    const ext = path.extname(name);
+    const base = name.replace(ext, '');
+    
+    const alternatives = [
+      `${base}.ts`,
+      `${base}.tsx`,
+      `${base}.js`,
+      `${base}.jsx`,
+      `${base}.json`
+    ];
+    
+    for (const alt of alternatives) {
+      const altPath = path.join(dir, alt);
+      if (fs.existsSync(altPath)) {
+        return altPath;
+      }
+    }
+    
+    return originalPath;
+  }
+  
+  private modifyCommand(command: string): string {
+    // Try adding --force, --yes, etc.
+    if (command.includes('npm install')) {
+      return command.replace('npm install', 'npm install --force');
+    }
+    if (command.includes('git')) {
+      return command + ' --force';
+    }
+    return command;
+  }
+  
+  private async applyFuzzyPatch(context: any): Promise<any> {
+    // Use fuzzy matching from diffEngine
+    const result = applySearchReplace(
+      context.originalContent,
+      context.args.search_block,
+      context.args.replace_block
+    );
+    
+    if (!result.success) {
+      throw new Error('Fuzzy patch failed');
+    }
+    
+    return result;
+  }
+}
+```
+
+#### 3. لا ي-existent Task Dependency Graph
+
+**المشكلة**: لا يمكن للمهام أن تعتمد على بعضها
+
+**التأثير**:
+- ❌ لا ي-existent Parallel execution
+- ❌ لا ي-existent Task scheduling
+- ❌ لا ي-existent Task dependencies
+
+**الحل**:
+```typescript
+interface TaskNode {
+  id: string;
+  task: AgentTask;
+  dependencies: string[];
+  dependents: string[];
+  status: 'pending' | 'running' | 'completed' | 'failed';
+}
+
+class TaskDependencyGraph {
+  private nodes: Map<string, TaskNode> = new Map();
+  
+  addTask(task: AgentTask, dependencies: string[] = []): void {
+    const node: TaskNode = {
+      id: task.id,
+      task,
+      dependencies,
+      dependents: [],
+      status: 'pending'
+    };
+    
+    this.nodes.set(task.id, node);
+    
+    // Update dependents for dependencies
+    for (const depId of dependencies) {
+      const depNode = this.nodes.get(depId);
+      if (depNode) {
+        depNode.dependents.push(task.id);
+      }
+    }
+  }
+  
+  getExecutableTasks(): AgentTask[] {
+    const executable: AgentTask[] = [];
+    
+    for (const node of this.nodes.values()) {
+      if (node.status !== 'pending') continue;
+      
+      // Check if all dependencies are completed
+      const allDepsCompleted = node.dependencies.every(depId => {
+        const depNode = this.nodes.get(depId);
+        return depNode?.status === 'completed';
+      });
+      
+      if (allDepsCompleted) {
+        executable.push(node.task);
+      }
+    }
+    
+    return executable;
+  }
+  
+  detectCycles(): boolean {
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    
+    const hasCycle = (nodeId: string): boolean => {
+      if (recursionStack.has(nodeId)) return true;
+      if (visited.has(nodeId)) return false;
+      
+      visited.add(nodeId);
+      recursionStack.add(nodeId);
+      
+      const node = this.nodes.get(nodeId);
+      if (node) {
+        for (const depId of node.dependencies) {
+          if (hasCycle(depId)) return true;
+        }
+      }
+      
+      recursionStack.delete(nodeId);
+      return false;
+    };
+    
+    for (const nodeId of this.nodes.keys()) {
+      if (hasCycle(nodeId)) return true;
+    }
+    
+    return false;
+  }
+  
+  markTaskCompleted(taskId: string): void {
+    const node = this.nodes.get(taskId);
+    if (node) {
+      node.status = 'completed';
+    }
+  }
+  
+  markTaskFailed(taskId: string): void {
+    const node = this.nodes.get(taskId);
+    if (node) {
+      node.status = 'failed';
+    }
+  }
+  
+  getTopologicalOrder(): string[] {
+    const order: string[] = [];
+    const visited = new Set<string>();
+    
+    const visit = (nodeId: string) => {
+      if (visited.has(nodeId)) return;
+      visited.add(nodeId);
+      
+      const node = this.nodes.get(nodeId);
+      if (node) {
+        for (const depId of node.dependencies) {
+          visit(depId);
+        }
+      }
+      
+      order.push(nodeId);
+    };
+    
+    for (const nodeId of this.nodes.keys()) {
+      visit(nodeId);
+    }
+    
+    return order.reverse();
+  }
+}
+```
+
+#### 4. لا ي-existent Rollback Mechanism
+
+**المشكلة**: لا يوجد طريق للتراجع عن التغييرات إذا فشلت المهمة
+
+**التأثير**:
+- ❌ Data loss محتمل
+- ❌ لا يexistent Recovery mechanism
+- ❌ لا يexistent Undo functionality
+
+**الحل**:
+```typescript
+interface Snapshot {
+  id: string;
+  taskId: string;
+  timestamp: string;
+  files: Map<string, { content: string; hash: string }>;
+}
+
+class RollbackManager {
+  private snapshots: Map<string, Snapshot> = new Map();
+  private workspace: WorkspaceProvider;
+  
+  constructor(workspace: WorkspaceProvider) {
+    this.workspace = workspace;
+  }
+  
+  async createSnapshot(taskId: string): Promise<string> {
+    const snapshotId = `snap-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const files = new Map<string, { content: string; hash: string }>();
+    
+    // Get all files in workspace
+    const tree = await this.workspace.getFileTree();
+    const filePaths = this.getAllFilePaths(tree);
+    
+    // Read each file
+    for (const filePath of filePaths) {
+      try {
+        const content = await this.workspace.readFile(filePath);
+        const hash = this.hashContent(content.content);
+        files.set(filePath, { content: content.content, hash });
+      } catch (err) {
+        // Skip unreadable files
+      }
+    }
+    
+    const snapshot: Snapshot = {
+      id: snapshotId,
+      taskId,
+      timestamp: new Date().toISOString(),
+      files
+    };
+    
+    this.snapshots.set(snapshotId, snapshot);
+    
+    return snapshotId;
+  }
+  
+  async restoreSnapshot(snapshotId: string): Promise<void> {
+    const snapshot = this.snapshots.get(snapshotId);
+    if (!snapshot) {
+      throw new Error('Snapshot not found');
+    }
+    
+    // Restore each file
+    for (const [filePath, fileData] of snapshot.files.entries()) {
+      await this.workspace.writeFile(filePath, fileData.content);
+    }
+  }
+  
+  async applyPatchWithRollback(
+    filePath: string,
+    searchBlock: string,
+    replaceBlock: string,
+    taskId: string
+  ): Promise<void> {
+    // Create snapshot before patch
+    const snapshotId = await this.createSnapshot(taskId);
+    
+    try {
+      // Read original content
+      const clip = await this.workspace.readFile(filePath);
+      const originalContent = clip.content;
+      
+      // Apply patch
+      const result = applySearchReplace(originalContent, searchBlock, replaceBlock);
+      
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      
+      // Write patched content
+      await this.workspace.writeFile(filePath, result.result);
+      
+    } catch (error) {
+      // Rollback on failure
+      console.error('Patch failed, rolling back...', error);
+      await this.restoreSnapshot(snapshotId);
+      throw error;
+    }
+  }
+  
+  private getAllFilePaths(node: FileNode): string[] {
+    const paths: string[] = [];
+    
+    if (!node.isDirectory) {
+      paths.push(node.path);
+      return paths;
+    }
+    
+    if (node.children) {
+      for (const child of node.children) {
+        paths.push(...this.getAllFilePaths(child));
+      }
+    }
+    
+    return paths;
+  }
+  
+  private hashContent(content: string): string {
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < content.length; i++) {
+      const char = content.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash.toString(16);
+  }
+  
+  // Cleanup old snapshots
+  cleanupOldSnapshots(maxAge: number = 3600000): void {
+    const now = Date.now();
+    
+    for (const [id, snapshot] of this.snapshots.entries()) {
+      const age = now - new Date(snapshot.timestamp).getTime();
+      if (age > maxAge) {
+        this.snapshots.delete(id);
+      }
+    }
+  }
+}
+```
+
+---
+
+## خطة التحسينات الشاملة
+
+### 🎯 المرحلة 1: Critical Improvements (1-2 أسابيع)
+
+#### 1.1 Context Window Management
+
+**الملفات المطلوبة**:
+- `src/server/context/ContextManager.ts` (جديد)
+- `src/server/context/TokenCounter.ts` (جديد)
+
+**التعديلات المطلوبة**:
+- تعديل `src/server/agentOrchestrator.ts` لاستخدام ContextManager
+- تعديل `src/server/adapters/SdkModelAdapter.ts` لإضافة token counting
+
+**الخطوات**:
+1. إنشاء `ContextManager` class
+2. إنشاء `TokenCounter` class (استخدام tiktoken)
+3. دمج ContextManager في AgentOrchestrator
+4. إضافة token counting لكل model call
+5. إضافة cost tracking
+
+**النتيجة المتوقعة**:
+- ✅ تحكم كامل في استهلاك tokens
+- ✅ توفير التكاليف
+- ✅ منع context overflow
+
+#### 1.2 Self-Correction Mechanism
+
+**الملفات المطلوبة**:
+- `src/server/agent/SelfCorrectionEngine.ts` (جديد)
+
+**التعديلات المطلوبة**:
+- تعديل `src/server/agentOrchestrator.ts` لاستخدام SelfCorrectionEngine
+
+**الخطوات**:
+1. إنشاء `SelfCorrectionEngine` class
+2. تعريف retry strategies لكل tool
+3. دمج SelfCorrectionEngine في Agent loop
+4. إضافة logging لـ self-correction attempts
+
+**النتيجة المتوقعة**:
+- ✅ زيادة معدل نجاح المهام
+- ✅ تقليل فشل المهام البسيطة
+- ✅ تحسين تجربة المستخدم
+
+#### 1.3 Task Dependency Graph
+
+**الملفات المطلوبة**:
+- `src/server/agent/TaskDependencyGraph.ts` (جديد)
+
+**التعديلات المطلوبة**:
+- تعديل `src/server/agentOrchestrator.ts` لدعم dependencies
+- تعديل `src/store/useAppStore.ts` لإضافة task dependencies
+
+**الخطوات**:
+1. إنشاء `TaskDependencyGraph` class
+2. إضافة dependencies field في Task interface
+3. دمج TaskDependencyGraph في Orchestrator
+4. إضافة UI لتحديد dependencies
+
+**النتيجة المتوقعة**:
+- ✅ دعم المهام المعقدة
+- ✅ Parallel execution
+- ✅ Task scheduling
+
+#### 1.4 Rollback Mechanism
+
+**الملفات المطلوبة**:
+- `src/server/agent/RollbackManager.ts` (جديد)
+
+**التعديلات المطلوبة**:
+- تعديل `src/server/agentOrchestrator.ts` لاستخدام RollbackManager
+
+**الخطوات**:
+1. إنشاء `RollbackManager` class
+2. دمج RollbackManager في write_patch
+3. إضافة auto-rollback على failure
+4. إضافة manual rollback في UI
+
+**النتيجة المتوقعة**:
+- ✅ حماية من data loss
+- ✅ Recovery mechanism
+- ✅ Undo functionality
+
+---
+
+### 🚀 المرحلة 2: High Priority Improvements (2-3 أسابيع)
+
+#### 2.1 Security Enhancements
+
+**الملفات المطلوبة**:
+- تعديل `src/server/adapters/HardenedShellAdapter.ts`
+- تعديل `src/server/adapters/LocalWorkspaceAdapter.ts`
+
+**التحسينات**:
+- Symlink protection
+- TOCTOU protection
+- Environment whitelisting
+- Rate limiting
+- Audit logging
+
+#### 2.2 API Validation
+
+**الملفات المطلوبة**:
+- `src/server/validation/schemas.ts` (جديد)
+- تعديل `server.ts` لإضافة validation middleware
+
+**التحسينات**:
+- Zod schemas لكل endpoint
+- Request validation
+- Response validation
+- Error handling موحد
+
+#### 2.3 Performance Monitoring
+
+**الملفات المطلوبة**:
+- `src/server/monitoring/PerformanceMonitor.ts` (جديد)
+- `src/client/monitoring/ClientMonitor.ts` (جديد)
+
+**التحسينات**:
+- Response time tracking
+- Memory usage tracking
+- CPU usage tracking
+- Error rate tracking
+
+#### 2.4 E2E Testing
+
+**الملفات المطلوبة**:
+- `tests/e2e/agent-flow.spec.ts` (جديد)
+- `tests/e2e/security.spec.ts` (جديد)
+- `tests/e2e/ui-flow.spec.ts` (جديد)
+
+**التحسينات**:
+- Playwright setup
+- E2E test suite
+- Visual regression tests
+- Performance tests
+
+---
+
+### 🔧 المرحلة 3: Medium Priority Improvements (3-4 أسابيع)
+
+#### 3.1 Database Migrations
+
+**الملفات المطلوبة**:
+- `src/server/database/migrations/` (جديد)
+- `src/server/database/MigrationManager.ts` (جديد)
+
+**التحسينات**:
+- Migration system
+- Version tracking
+- Rollback support
+- Data migration scripts
+
+#### 3.2 Backup System
+
+**الملفات المطلوبة**:
+- `src/server/database/BackupManager.ts` (جديد)
+
+**التحسينات**:
+- Automated backups
+- Backup compression
+- Backup verification
+- Restore functionality
+
+#### 3.3 Authentication/Authorization
+
+**الملفات المطلوبة**:
+- `src/server/auth/AuthManager.ts` (جديد)
+- `src/server/auth/JWTMiddleware.ts` (جديد)
+
+**التحسينات**:
+- JWT authentication
+- Role-based access control
+- Session management
+- Password hashing
+
+#### 3.4 Monitoring & Alerting
+
+**الملفات المطلوبة**:
+- `src/server/monitoring/MetricsCollector.ts` (جديد)
+- `src/server/monitoring/AlertManager.ts` (جديد)
+
+**التحسينات**:
+- Metrics collection
+- Alert thresholds
+- Notification system
+- Dashboard
+
+---
+
+## أمثلة الكود المقترحة
+
+### 💡 Example 1: Enhanced Agent Loop with Self-Correction
+
+```typescript
+class EnhancedAgentOrchestrator extends AgentOrchestrator {
+  private contextManager: ContextManager;
+  private selfCorrection: SelfCorrectionEngine;
+  private rollbackManager: RollbackManager;
+  private dependencyGraph: TaskDependencyGraph;
+  
+  constructor(rootPath?: string, providers?: any) {
+    super(rootPath, providers);
+    
+    this.contextManager = new ContextManager(128000, 1000);
+    this.selfCorrection = new SelfCorrectionEngine();
+    this.rollbackManager = new RollbackManager(this.workspace);
+    this.dependencyGraph = new TaskDependencyGraph();
+  }
+  
+  private async executeRealAgentLoop(task: AgentTask) {
+    const logMsg = (msg: string) => {
+      task.logs.push(msg);
+      this.storage.addLog(task.id, msg);
+      this.emit('task:update', task);
+    };
+    
+    logMsg(`[Enhanced Agent]: Initialized task execution`);
+    
+    // Create snapshot before execution
+    const snapshotId = await this.rollbackManager.createSnapshot(task.id);
+    logMsg(`[Snapshot]: Created ${snapshotId}`);
+    
+    task.status = 'running';
+    
+    const systemPrompt = `You are K.O.S Autonomous Agent...`;
+    
+    const contents: any[] = [
+      { role: 'user', parts: [{ text: `Task Objective: ${task.prompt}` }] }
+    ];
+    
+    let loopIteration = 0;
+    const MAX_ITERATIONS = 6;
+    
+    while (loopIteration < MAX_ITERATIONS) {
+      loopIteration++;
+      logMsg(`[Iteration ${loopIteration}]: Calling model API`);
+      
+      // Truncate context if needed
+      const truncatedContents = this.contextManager.truncateHistory(contents, systemPrompt);
+      
+      // Count tokens
+      const tokenCount = this.contextManager.countHistory(truncatedContents);
+      logMsg(`[Context]: ${tokenCount} tokens`);
+      
+      const modelResponse = await this.model.askModel(truncatedContents, systemPrompt, true);
+      
+      if (!modelResponse.isConfigured || modelResponse.error) {
+        task.status = 'failed';
+        logMsg(`Model error: ${modelResponse.error}`);
+        
+        // Rollback on failure
+        await this.rollbackManager.restoreSnapshot(snapshotId);
+        logMsg(`[Rollback]: Restored ${snapshotId}`);
+        
+        this.persistTask(task);
+        this.emit('task:update', task);
+        return;
+      }
+      
+      const functionCalls = modelResponse.functionCalls;
+      if (functionCalls && functionCalls.length > 0) {
+        for (const call of functionCalls) {
+          const { name, args } = call;
+          logMsg(`[Tool Call]: ${name}`);
+          
+          // Execute with self-correction
+          try {
+            const result = await this.selfCorrection.executeWithSelfCorrection(
+              name,
+              args,
+              { workspace: this.workspace, shell: this.shell }
+            );
+            
+            // Handle success
+            this.handleToolSuccess(name, args, result, contents, task, logMsg);
+            
+          } catch (error) {
+            // Handle failure with retry
+            logMsg(`[Tool Error]: ${error.message}`);
+            
+            if (loopIteration < MAX_ITERATIONS) {
+              logMsg(`[Retry]: Will attempt alternative approach`);
+              continue;
+            }
+            
+            // Rollback if all retries failed
+            await this.rollbackManager.restoreSnapshot(snapshotId);
+            logMsg(`[Rollback]: Restored ${snapshotId}`);
+            
+            task.status = 'failed';
+            this.persistTask(task);
+            this.emit('task:update', task);
+            return;
+          }
+        }
+      } else {
+        // No more function calls - task complete
+        const finalStep: AgentStep = {
+          id: `step-${Date.now()}-done`,
+          title: 'Agent Task Completed',
+          status: 'completed',
+          timestamp: new Date().toLocaleTimeString(),
+          details: modelResponse.text || 'Task completed successfully'
+        };
+        task.steps.push(finalStep);
+        task.status = 'completed';
+        logMsg('Task completed successfully');
+        this.persistTask(task);
+        this.emit('task:update', task);
+        break;
+      }
+      
+      this.persistTask(task);
+      this.emit('task:update', task);
+    }
+    
+    // Cleanup old snapshot
+    this.rollbackManager.cleanupOldSnapshots();
+  }
+  
+  private handleToolSuccess(
+    toolName: string,
+    args: any,
+    result: any,
+    contents: any[],
+    task: AgentTask,
+    logMsg: (msg: string) => void
+  ): void {
+    // Implementation depends on tool type
+    // Similar to current implementation but with rollback support
+  }
+}
+```
+
+### 💡 Example 2: API Validation with Zod
+
+```typescript
+import { z } from 'zod';
+
+// Validation schemas
+const CreateTaskSchema = z.object({
+  prompt: z.string().min(1).max(10000),
+  mode: z.enum(['task', 'chat']).default('task')
+});
+
+const ApproveStepSchema = z.object({
+  taskId: z.string().min(1),
+  stepId: z.string().min(1),
+  approved: z.boolean()
+});
+
+const ExecuteCommandSchema = z.object({
+  command: z.string().min(1).max(1000)
+});
+
+// Validation middleware
+function validateRequest<T>(schema: z.ZodSchema<T>) {
+  return (req: any, res: any, next: any) => {
+    try {
+      const validated = schema.parse(req.body);
+      req.validatedBody = validated;
+      next();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          details: error.errors
+        });
+      }
+      next(error);
+    }
+  };
+}
+
+// Usage in server.ts
+app.post('/api/agent/task', validateRequest(CreateTaskSchema), async (req, res) => {
+  const { prompt, mode } = req.validatedBody;
+  // ... rest of implementation
+});
+
+app.post('/api/agent/approve', validateRequest(ApproveStepSchema), async (req, res) => {
+  const { taskId, stepId, approved } = req.validatedBody;
+  // ... rest of implementation
+});
+
+app.post('/api/workspace/terminal', validateRequest(ExecuteCommandSchema), async (req, res) => {
+  const { command } = req.validatedBody;
+  // ... rest of implementation
+});
+```
+
+### 💡 Example 3: Rate Limiting Middleware
+
+```typescript
+import rateLimit from 'express-rate-limit';
+
+// General rate limit
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Stricter rate limit for agent endpoints
+const agentLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // Limit each IP to 10 agent requests per minute
+  message: 'Too many agent requests, please slow down',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Very strict rate limit for terminal execution
+const terminalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // Limit each IP to 5 terminal commands per minute
+  message: 'Too many terminal commands, please slow down',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Apply to routes
+app.use(generalLimiter);
+
+app.post('/api/agent/task', agentLimiter, async (req, res) => {
+  // ...
+});
+
+app.post('/api/workspace/terminal', terminalLimiter, async (req, res) => {
+  // ...
+});
+```
+
+### 💡 Example 4: Structured Logging with Pino
+
+```typescript
+import pino from 'pino';
+
+// Create logger
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  transport: process.env.NODE_ENV === 'development'
+    ? pino.transport({
+      target: 'pino-pretty',
+      options: { colorize: true }
+    })
+    : undefined
+});
+
+// Logging in agent orchestrator
+class AgentOrchestrator {
+  private logger = logger.child({ component: 'AgentOrchestrator' });
+  
+  public async createTask(prompt: string, mode: 'task' | 'chat' = 'task'): Promise<AgentTask> {
+    this.logger.info({ prompt, mode }, 'Creating new task');
+    
+    const task: AgentTask = {
+      id: `kos-${Date.now()}`,
+      title: prompt.length > 50 ? `${prompt.substring(0, 50)}...` : prompt,
+      prompt,
+      mode,
+      status: 'planning',
+      createdAt: new Date().toISOString(),
+      steps: [],
+      artifacts: [],
+      logs: []
+    };
+    
+    this.tasks.set(id, task);
+    this.persistTask(task);
+    this.emit('task:update', task);
+    
+    this.logger.info({ taskId: task.id }, 'Task created successfully');
+    
+    // Run agent loop
+    this.executeRealAgentLoop(task).catch((err) => {
+      this.logger.error({ error: err, taskId: task.id }, 'Agent loop failed');
+      task.status = 'failed';
+      task.logs.push(`Fatal error: ${err.message}`);
+      this.persistTask(task);
+      this.emit('task:update', task);
+    });
+    
+    return task;
+  }
+  
+  private async executeRealAgentLoop(task: AgentTask) {
+    const taskLogger = this.logger.child({ taskId: task.id });
+    
+    taskLogger.info('Starting agent execution loop');
+    
+    // ... rest of implementation
+    
+    taskLogger.info({ iterations: loopIteration, steps: task.steps.length }, 'Agent loop completed');
+  }
+}
+
+// Logging in shell adapter
+class HardenedShellAdapter {
+  private logger = logger.child({ component: 'HardenedShellAdapter' });
+  
+  public async executeCommand(rawCommand: string, options: { timeoutMs?: number } = {}): Promise<CommandResult> {
+    const cmdLogger = this.logger.child({ command: rawCommand });
+    
+    cmdLogger.info('Validating command');
+    const check = this.validateCommand(rawCommand);
+    
+    if (!check.isAllowed) {
+      cmdLogger.warn({ reason: check.reason }, 'Command rejected');
+      return {
+        stdout: '',
+        stderr: `[K.O.S Sandbox Security]: ${check.reason}`,
+        exitCode: 126,
+        blocked: true,
+        reason: check.reason
+      };
+    }
+    
+    cmdLogger.info('Command validated, executing');
+    
+    // ... rest of implementation
+    
+    cmdLogger.info({ exitCode: result.exitCode, outputLength: result.stdout.length }, 'Command completed');
+    
+    return result;
+  }
+}
+```
+
+---
+
+## أفضل الممارسات
+
+### 📋 Code Quality
+
+#### 1. TypeScript Best Practices
+
+```typescript
+// ✅ DO: Use strict typing
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+}
+
+// ❌ DON'T: Use any
+function processUser(user: any) {
+  // Bad - no type safety
+}
+
+// ✅ DO: Use generics
+function createMap<K extends string, V>(items: V[], keyFn: (item: V) => K): Map<K, V> {
+  const map = new Map<K, V>();
+  for (const item of items) {
+    map.set(keyFn(item), item);
+  }
+  return map;
+}
+
+// ✅ DO: Use utility types
+type PartialUser = Partial<User>;
+type UserKeys = keyof User;
+type UserWithTimestamp = User & { timestamp: number };
+
+// ✅ DO: Use discriminated unions
+type Result<T, E> =
+  | { success: true; data: T }
+  | { success: false; error: E };
+
+function handleResult<T, E>(result: Result<T, E>) {
+  if (result.success) {
+    console.log(result.data);
+  } else {
+    console.error(result.error);
+  }
+}
+```
+
+#### 2. Error Handling
+
+```typescript
+// ✅ DO: Use custom error classes
+class ValidationError extends Error {
+  constructor(public field: string, message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+class SecurityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecurityError';
+  }
+}
+
+// ✅ DO: Handle errors gracefully
+async function executeCommand(command: string): Promise<CommandResult> {
+  try {
+    const result = await shell.executeCommand(command);
+    return result;
+  } catch (error) {
+    if (error instanceof SecurityError) {
+      logger.error({ error }, 'Security violation');
+      throw error;
+    }
+    
+    if (error instanceof ValidationError) {
+      logger.warn({ error }, 'Validation failed');
+      throw error;
+    }
+    
+    logger.error({ error }, 'Unexpected error');
+    throw new Error('Command execution failed');
+  }
+}
+
+// ✅ DO: Use error boundaries
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean; error: Error }
+> {
+  state = { hasError: false, error: new Error() };
+  
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    logger.error({ error, errorInfo }, 'React error boundary caught error');
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || <ErrorFallback error={this.state.error} />;
+    }
+    return this.props.children;
+  }
+}
+```
+
+#### 3. Async/Await Patterns
+
+```typescript
+// ✅ DO: Use async/await for clarity
+async function fetchUserData(userId: string): Promise<User> {
+  const user = await db.getUser(userId);
+  const posts = await db.getPosts(userId);
+  return { ...user, posts };
+}
+
+// ✅ DO: Use Promise.all for parallel operations
+async function fetchAllData(userId: string): Promise<{ user: User; posts: Post[]; comments: Comment[] }> {
+  const [user, posts, comments] = await Promise.all([
+    db.getUser(userId),
+    db.getPosts(userId),
+    db.getComments(userId)
+  ]);
+  
+  return { user, posts, comments };
+}
+
+// ✅ DO: Handle errors in async operations
+async function safeExecute<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    logger.error({ error }, 'Operation failed, using fallback');
+    return fallback;
+  }
+}
+
+// ✅ DO: Use abort controller for cancellable operations
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw error;
+  }
+}
+```
+
+### 🔒 Security Best Practices
+
+#### 1. Input Validation
+
+```typescript
+// ✅ DO: Validate all inputs
+import { z } from 'zod';
+
+const UserInputSchema = z.object({
+  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/),
+  email: z.string().email(),
+  age: z.number().min(18).max(120)
+});
+
+function createUser(input: unknown): User {
+  const validated = UserInputSchema.parse(input);
+  // Safe to use validated data
+  return {
+    id: generateId(),
+    ...validated
+  };
+}
+
+// ✅ DO: Sanitize HTML content
+import DOMPurify from 'dompurify';
+
+function sanitizeHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['b', 'i', 'u', 'strong', 'em', 'p', 'br'],
+    ALLOWED_ATTR: []
+  });
+}
+
+// ✅ DO: Escape SQL queries (use parameterized queries instead)
+const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
+const user = stmt.get(userId); // Safe - parameterized
+```
+
+#### 2. Authentication & Authorization
+
+```typescript
+// ✅ DO: Use JWT for stateless authentication
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+function generateToken(userId: string): string {
+  return jwt.sign(
+    { userId, iat: Math.floor(Date.now() / 1000) },
+    JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
+
+function verifyToken(token: string): { userId: string } | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+// ✅ DO: Use role-based access control
+enum Role {
+  ADMIN = 'admin',
+  USER = 'user',
+  GUEST = 'guest'
+}
+
+function checkPermission(userRole: Role, requiredRole: Role): boolean {
+  const roleHierarchy = {
+    [Role.ADMIN]: 3,
+    [Role.USER]: 2,
+    [Role.GUEST]: 1
+  };
+  
+  return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
+}
+
+// Middleware for protected routes
+function requireAuth(requiredRole: Role) {
+  return (req: any, res: any, next: any) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const user = db.getUser(decoded.userId);
+    if (!user || !checkPermission(user.role, requiredRole)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    
+    req.user = user;
+    next();
+  };
+}
+```
+
+#### 3. Secrets Management
+
+```typescript
+// ✅ DO: Never commit secrets
+// Use environment variables
+const API_KEY = process.env.API_KEY;
+
+// ✅ DO: Validate secrets at startup
+function validateSecrets(): void {
+  const required = ['API_KEY', 'JWT_SECRET', 'DATABASE_URL'];
+  
+  for (const secret of required) {
+    if (!process.env[secret]) {
+      throw new Error(`Missing required secret: ${secret}`);
+    }
+  }
+  
+  // Check for default values
+  if (process.env.API_KEY === 'your-api-key-here') {
+    throw new Error('API_KEY is using default value');
+  }
+}
+
+// ✅ DO: Use secret managers in production
+// Example with AWS Secrets Manager
+async function getSecret(secretName: string): Promise<string> {
+  if (process.env.NODE_ENV === 'production') {
+    // Fetch from AWS Secrets Manager
+    const client = new SecretsManagerClient();
+    const response = await client.getSecretValue({ SecretId: secretName });
+    return response.SecretString as string;
+  } else {
+    // Use environment variable in development
+    return process.env[secretName] || '';
+  }
+}
+```
+
+### ⚡ Performance Best Practices
+
+#### 1. React Performance
+
+```typescript
+// ✅ DO: Use React.memo for expensive components
+const ExpensiveComponent = React.memo(({ data }: { data: ComplexData }) => {
+  // Only re-renders if data changes
+  return <div>{/* expensive rendering */}</div>;
+});
+
+// ✅ DO: Use useMemo for expensive calculations
+const sortedItems = useMemo(() => {
+  return items.sort((a, b) => a.value - b.value);
+}, [items]);
+
+// ✅ DO: Use useCallback for stable function references
+const handleClick = useCallback(() => {
+  doSomething(dependency);
+}, [dependency]);
+
+// ✅ DO: Use code splitting
+const HeavyComponent = React.lazy(() => import('./HeavyComponent'));
+
+function App() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <HeavyComponent />
+    </Suspense>
+  );
+}
+
+// ✅ DO: Virtualize long lists
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+function VirtualList({ items }: { items: Item[] }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 50
+  });
+  
+  return (
+    <div ref={parentRef} style={{ height: '400px', overflow: 'auto' }}>
+      <div style={{ height: `${virtualizer.getTotalSize()}px` }}>
+        {virtualizer.getVirtualItems().map((virtualItem) => (
+          <div
+            key={virtualItem.key}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${virtualItem.start}px)`
+            }}
+          >
+            <ListItem item={items[virtualItem.index]} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### 2. Database Performance
+
+```typescript
+// ✅ DO: Use indexes for frequently queried columns
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+  CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
+  CREATE INDEX IF NOT EXISTS idx_steps_task_id ON steps(task_id);
+`);
+
+// ✅ DO: Use transactions for multiple operations
+db.exec('BEGIN TRANSACTION');
+try {
+  db.run('INSERT INTO tasks (...) VALUES (...)');
+  db.run('INSERT INTO steps (...) VALUES (...)');
+  db.run('INSERT INTO artifacts (...) VALUES (...)');
+  db.exec('COMMIT');
+} catch (error) {
+  db.exec('ROLLBACK');
+  throw error;
+}
+
+// ✅ DO: Use prepared statements
+const insertTaskStmt = db.prepare('INSERT INTO tasks (id, title, prompt) VALUES (?, ?, ?)');
+
+function insertTask(task: Task): void {
+  insertTaskStmt.run(task.id, task.title, task.prompt);
+}
+
+// ✅ DO: Batch operations when possible
+function insertMultipleTasks(tasks: Task[]): void {
+  const insertStmt = db.prepare('INSERT INTO tasks (id, title, prompt) VALUES (?, ?, ?)');
+  
+  const insertMany = db.transaction((tasks: Task[]) => {
+    for (const task of tasks) {
+      insertStmt.run(task.id, task.title, task.prompt);
+    }
+  });
+  
+  insertMany(tasks);
+}
+```
+
+#### 3. API Performance
+
+```typescript
+// ✅ DO: Use compression
+import compression from 'compression';
+app.use(compression());
+
+// ✅ DO: Use caching
+import NodeCache from 'node-cache';
+const cache = new NodeCache({ stdTTL: 600 }); // 10 minutes
+
+app.get('/api/data/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  // Check cache first
+  const cached = cache.get(id);
+  if (cached) {
+    return res.json(cached);
+  }
+  
+  // Fetch from database
+  const data = await db.getData(id);
+  
+  // Cache the result
+  cache.set(id, data);
+  
+  res.json(data);
+});
+
+// ✅ DO: Use pagination
+app.get('/api/tasks', async (req, res) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const offset = (page - 1) * limit;
+  
+  const tasks = await db.getTasksPaginated(limit, offset);
+  const total = await db.getTasksCount();
+  
+  res.json({
+    data: tasks,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit)
+    }
+  });
+});
+
+// ✅ DO: Use streaming for large responses
+app.get('/api/large-data', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  
+  const stream = db.streamLargeData();
+  
+  stream.on('data', (chunk) => {
+    res.write(chunk);
+  });
+  
+  stream.on('end', () => {
+    res.end();
+  });
+});
+```
+
+---
+
+## Roadmap الكامل
+
+### 📅 Q1 2025 (Months 1-3)
+
+#### Month 1: Foundation
+- ✅ Context Window Management
+- ✅ Self-Correction Mechanism
+- ✅ Task Dependency Graph
+- ✅ Rollback Mechanism
+- ✅ Basic Security Enhancements
+
+#### Month 2: Performance & Testing
+- ✅ API Validation (Zod)
+- ✅ Rate Limiting
+- ✅ Unit Test Coverage > 80%
+- ✅ E2E Test Suite (Playwright)
+- ✅ Performance Monitoring
+
+#### Month 3: Database & Storage
+- ✅ Migration System
+- ✅ Backup System
+- ✅ Data Retention Policy
+- ✅ Database Indexing
+- ✅ Connection Pooling
+
+### 📅 Q2 2025 (Months 4-6)
+
+#### Month 4: Security Hardening
+- ✅ Authentication/Authorization
+- ✅ Audit Logging
+- ✅ Intrusion Detection
+- ✅ Security Headers
+- ✅ CSP Configuration
+
+#### Month 5: Advanced Features
+- ✅ Multi-user Support
+- ✅ RBAC System
+- ✅ Session Management
+- ✅ OAuth Integration
+- ✅ 2FA Support
+
+#### Month 6: Monitoring & Observability
+- ✅ Metrics Collection
+- ✅ Alerting System
+- ✅ Dashboard
+- ✅ Log Aggregation
+- ✅ Distributed Tracing
+
+### 📅 Q3 2025 (Months 7-9)
+
+#### Month 7: Scalability
+- ✅ Horizontal Scaling
+- ✅ Load Balancing
+- ✅ Caching Layer (Redis)
+- ✅ CDN Integration
+- ✅ CDN Configuration
+
+#### Month 8: Advanced AI Features
+- ✅ Multi-Model Support
+- ✅ Model Fine-tuning
+- ✅ Custom Tool Definitions
+- ✅ Agent Marketplace
+- ✅ Prompt Templates
+
+#### Month 9: Developer Experience
+- ✅ CLI Tool
+- ✅ SDK/Library
+- ✅ Plugin System
+- ✅ Webhooks
+- ✅ API Documentation
+
+### 📅 Q4 2025 (Months 10-12)
+
+#### Month 10: Enterprise Features
+- ✅ SSO Integration
+- ✅ Audit Compliance
+- ✅ Data Encryption at Rest
+- ✅ Data Encryption in Transit
+- ✅ Compliance Reports
+
+#### Month 11: Mobile & Cloud
+- ✅ Mobile App (React Native)
+- ✅ Cloud Deployment
+- ✅ Multi-region Support
+- ✅ Disaster Recovery
+- ✅ High Availability
+
+#### Month 12: Polish & Launch
+- ✅ Performance Optimization
+- ✅ UX Improvements
+- ✅ Accessibility (WCAG 2.1)
+- ✅ Documentation
+- ✅ Marketing Website
+
+---
+
+## Checklist النهائي
+
+### ✅ قبل الانتقال إلى Production
+
+#### Security
+- [ ] جميع environment variables يتم التحقق منها عند startup
+- [ ] جميع inputs يتم validation باستخدام Zod
+- [ ] جميع SQL queries تستخدم parameterized queries
+- [ ] جميع secrets مخزنة في secret manager
+- [ ] Rate limiting مفعّل على جميع endpoints
+- [ ] Authentication/Authorization مُنفذ
+- [ ] HTTPS مفعّل في production
+- [ ] Security headers مُعدة (CSP, HSTS, X-Frame-Options)
+- [ ] Audit logging مفعّل
+- [ ] Intrusion detection مُعد
+
+#### Performance
+- [ ] Context window management مُنفذ
+- [ ] Caching layer مُعد (Redis/memory)
+- [ ] Database indexes مُضافة
+- [ ] Query optimization مُطبق
+- [ ] Response compression مفعّل
+- [ ] CDN مُعد
+- [ ] Image optimization مُطبق
+- [ ] Code splitting مُطبق
+- [ ] Lazy loading مُطبق
+- [ ] Performance monitoring مُعد
+
+#### Reliability
+- [ ] Error boundaries مُضافة
+- [ ] Retry mechanism مُنفذ
+- [ ] Circuit breaker pattern مُطبق
+- [ ] Health check endpoint مُعد
+- [ ] Graceful shutdown مُطبق
+- [ ] Backup system مُعد
+- [ ] Disaster recovery plan مُعد
+- [ ] Monitoring/alerting مُعد
+- [ ] Logging مُهيكل
+- [ ] Distributed tracing مُعد
+
+#### Testing
+- [ ] Unit test coverage > 80%
+- [ ] Integration tests مكتملة
+- [ ] E2E tests مكتملة
+- [ ] Performance tests مكتملة
+- [ ] Security tests مكتملة
+- [ ] Load tests مكتملة
+- [ ] Chaos engineering tests مكتملة
+- [ ] Accessibility tests مكتملة
+- [ ] Visual regression tests مكتملة
+- [ ] Browser compatibility tests مكتملة
+
+#### Documentation
+- [ ] API documentation مكتملة
+- [ ] Architecture documentation مكتملة
+- [ ] Deployment guide مكتمل
+- [ ] Troubleshooting guide مكتمل
+- [ ] Contributor guide مكتمل
+- [ ] User guide مكتمل
+- [ ] Changelog محدث
+- [ ] README محدث
+- [ ] Code comments كافية
+- [ ] Inline documentation كافية
+
+---
+
+## 🎯 الخلاصة
+
+هذا الدليل الشامل يغطي:
+- ✅ تحليل معماري كامل
+- ✅ تفصيل كل مكون
+- ✅ نقاط الضعف والحلول
+- ✅ خطة تحسينات مرحلية
+- ✅ أمثلة كود عملية
+- ✅ أفضل الممارسات
+- ✅ Roadmap لسنة كاملة
+- ✅ Checklist نهائي
+
+باتباع هذا الدليل، يمكنك تحويل K.O.S من 7.5/10 إلى 10/10 خلال 6-9 أشهر.
+
+**التوصية النهائية**: ابدأ بالمرحلة 1 (Critical Improvements) فوراً، لأنها ستكون لها أكبر تأثير على الاستقرار والأمان.
+
+---
+
+**التاريخ**: 2025-10-28
+**الإصدار**: 1.0.0
+**المؤلف**: Development Team

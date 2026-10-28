@@ -1,0 +1,6 @@
+{
+  "name": "K.O.S",
+  "description": "Kozer Operating System - An agent-first desktop workspace and coding environment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
